@@ -1,0 +1,39 @@
+{
+  "repo": "myorg/backend-api",
+  "pr_number": 99,
+  "title": "Add database migration for user roles",
+  "description": "Adds a new 'role' column to the users table and migrates existing users to 'member' role.",
+  "author": "developer",
+  "files_changed": [
+    {
+      "path": "db/migrations/002_add_user_roles.sql",
+      "additions": 25,
+      "deletions": 0,
+      "patch": "ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'member';"
+    },
+    {
+      "path": "src/auth/permissions.py",
+      "additions": 40,
+      "deletions": 15,
+      "patch": "def check_role(user, required_role): ..."
+    },
+    {
+      "path": "tests/test_permissions.py",
+      "additions": 30,
+      "deletions": 0,
+      "patch": ""
+    }
+  ],
+  "ci_results": [
+    {"name": "unit-tests", "passed": true, "details": "85/85 passed"},
+    {"name": "lint", "passed": true, "details": ""},
+    {"name": "integration-tests", "passed": true, "details": "12/12 passed"}
+  ],
+  "commit_messages": [
+    "feat: add role column migration",
+    "feat: implement role-based permission checks",
+    "test: add permission check tests"
+  ],
+  "recent_incidents": [],
+  "deployment_target": "production"
+}

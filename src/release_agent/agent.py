@@ -58,7 +58,7 @@ class ReleaseRiskAgent:
         # 2. Store any other dependencies you might need.
         #    For now, just the LLM client. In Phase 4, you'll add
         #    the policy engine here too.
-        self.llm: LLMClient | None = None  # Replace with real init
+        self.llm = LLMClient(config=llm_config)
 
     async def assess(self, release: ReleaseInput) -> ReleaseOutput:
         """Run a full risk assessment on a release.
@@ -97,7 +97,10 @@ class ReleaseRiskAgent:
         #    return result
         #
         # Hint: For now, skip step 4. You'll add it in Phase 4.
-        raise NotImplementedError("TODO: Implement assessment pipeline")
+        system_prompt = build_system_prompt()
+        user_prompt = build_user_prompt(release)
+        result = await self.llm.assess_risk(system_prompt, user_prompt)
+        return result
 
 
 # ---------------------------------------------------------------------------
@@ -142,8 +145,29 @@ def main() -> None:
     #
     # 5. Print the result as formatted JSON:
     #    print(result.model_dump_json(indent=2))
-    print("TODO: Implement CLI entry point")
-    print("Usage: release-agent --input release_data.json")
+    parser = argparse.ArgumentParser(description="Release Risk Assessment Agent")
+    parser.add_argument(
+        "--input", "-i",
+        type=str,
+        help="Path to JSON file with release data (reads stdin if omitted)",
+    )
+    args = parser.parse_args()
+
+    if not args.input and sys.stdin.isatty():
+      parser.print_usage()
+      print("Provide --input FILE or pipe JSON via stdin.")
+      return
+
+    if args.input:
+        with open(args.input) as f:
+            data = json.load(f)
+    else:
+        data = json.load(sys.stdin)
+
+    release = ReleaseInput.model_validate(data)
+    agent = ReleaseRiskAgent()
+    result = asyncio.run(agent.assess(release))
+    print(result.model_dump_json(indent=2))
 
 
 if __name__ == "__main__":
