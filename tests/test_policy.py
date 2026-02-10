@@ -17,8 +17,6 @@ from __future__ import annotations
 import pytest
 
 from release_agent.policy import (
-    PolicyAction,
-    PolicyViolation,
     apply_policies,
     rule_auth_changes,
     rule_ci_failures,
@@ -35,7 +33,6 @@ from release_agent.schemas import (
     RiskFactor,
     RiskLevel,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -88,7 +85,7 @@ class TestCIFailureRule:
     ) -> None:
         """No CI results means no violation (can't fail what doesn't exist)."""
         with pytest.raises(NotImplementedError):
-            result = rule_ci_failures(base_output, base_input)
+            rule_ci_failures(base_output, base_input)
             # Once implemented: assert result is None
 
     def test_all_ci_passing_no_violation(
@@ -100,7 +97,7 @@ class TestCIFailureRule:
             CIResult(name="lint", passed=True),
         ]
         with pytest.raises(NotImplementedError):
-            result = rule_ci_failures(base_output, base_input)
+            rule_ci_failures(base_output, base_input)
             # Once implemented: assert result is None
 
     def test_ci_failure_forces_nogo(
@@ -112,7 +109,7 @@ class TestCIFailureRule:
             CIResult(name="lint", passed=True),
         ]
         with pytest.raises(NotImplementedError):
-            result = rule_ci_failures(base_output, base_input)
+            rule_ci_failures(base_output, base_input)
             # Once implemented:
             # assert result is not None
             # assert result.action == PolicyAction.FORCE_NO_GO
@@ -133,7 +130,7 @@ class TestHighRiskThresholdRule:
         """Risk score below 0.7 should not trigger."""
         base_output.risk_score = 0.5
         with pytest.raises(NotImplementedError):
-            result = rule_high_risk_threshold(base_output, base_input)
+            rule_high_risk_threshold(base_output, base_input)
             # Once implemented: assert result is None
 
     def test_high_risk_forces_nogo(
@@ -142,7 +139,7 @@ class TestHighRiskThresholdRule:
         """Risk score above 0.7 should force NO_GO."""
         base_output.risk_score = 0.8
         with pytest.raises(NotImplementedError):
-            result = rule_high_risk_threshold(base_output, base_input)
+            rule_high_risk_threshold(base_output, base_input)
             # Once implemented:
             # assert result is not None
             # assert result.action == PolicyAction.FORCE_NO_GO
@@ -153,7 +150,7 @@ class TestHighRiskThresholdRule:
         """Risk score at exactly 0.7 should not trigger (> not >=)."""
         base_output.risk_score = 0.7
         with pytest.raises(NotImplementedError):
-            result = rule_high_risk_threshold(base_output, base_input)
+            rule_high_risk_threshold(base_output, base_input)
             # Once implemented: assert result is None
 
 
@@ -173,7 +170,7 @@ class TestDatabaseMigrationRule:
             FileChange(path="src/main.py", additions=10, deletions=5),
         ]
         with pytest.raises(NotImplementedError):
-            result = rule_database_migration(base_output, base_input)
+            rule_database_migration(base_output, base_input)
             # Once implemented: assert result is None
 
     def test_migration_file_adjusts_risk(
@@ -184,7 +181,7 @@ class TestDatabaseMigrationRule:
             FileChange(path="migrations/0001_initial.sql", additions=20, deletions=0),
         ]
         with pytest.raises(NotImplementedError):
-            result = rule_database_migration(base_output, base_input)
+            rule_database_migration(base_output, base_input)
             # Once implemented:
             # assert result is not None
             # assert result.action == PolicyAction.ADJUST_RISK
@@ -202,7 +199,7 @@ class TestDatabaseMigrationRule:
             ),
         ]
         with pytest.raises(NotImplementedError):
-            result = rule_database_migration(base_output, base_input)
+            rule_database_migration(base_output, base_input)
             # Once implemented:
             # assert result is not None
 
@@ -223,7 +220,7 @@ class TestAuthChangesRule:
             FileChange(path="src/utils/helpers.py", additions=5, deletions=3),
         ]
         with pytest.raises(NotImplementedError):
-            result = rule_auth_changes(base_output, base_input)
+            rule_auth_changes(base_output, base_input)
             # Once implemented: assert result is None
 
     def test_auth_file_adjusts_risk(
@@ -234,7 +231,7 @@ class TestAuthChangesRule:
             FileChange(path="src/auth/login.py", additions=10, deletions=5),
         ]
         with pytest.raises(NotImplementedError):
-            result = rule_auth_changes(base_output, base_input)
+            rule_auth_changes(base_output, base_input)
             # Once implemented:
             # assert result is not None
             # assert result.action == PolicyAction.ADJUST_RISK
@@ -253,7 +250,7 @@ class TestDeployDuringIncidentRule:
     ) -> None:
         """No incidents means no warning."""
         with pytest.raises(NotImplementedError):
-            result = rule_deploy_during_incident(base_output, base_input)
+            rule_deploy_during_incident(base_output, base_input)
             # Once implemented: assert result is None
 
     def test_active_incident_adds_warning(
@@ -262,7 +259,7 @@ class TestDeployDuringIncidentRule:
         """Active incidents should add a warning."""
         base_input.recent_incidents = ["[P1] Database outage — ongoing"]
         with pytest.raises(NotImplementedError):
-            result = rule_deploy_during_incident(base_output, base_input)
+            rule_deploy_during_incident(base_output, base_input)
             # Once implemented:
             # assert result is not None
             # assert result.action == PolicyAction.ADD_WARNING
@@ -282,7 +279,7 @@ class TestApplyPolicies:
         """No policy violations should return the output unchanged."""
         # Empty rules list = no violations possible
         with pytest.raises(NotImplementedError):
-            result = apply_policies(base_output, base_input, rules=[])
+            apply_policies(base_output, base_input, rules=[])
             # Once implemented:
             # assert result.decision == base_output.decision
             # assert result.risk_score == base_output.risk_score
@@ -295,7 +292,7 @@ class TestApplyPolicies:
             CIResult(name="tests", passed=False, details="Failed"),
         ]
         with pytest.raises(NotImplementedError):
-            result = apply_policies(base_output, base_input)
+            apply_policies(base_output, base_input)
             # Once implemented:
             # assert result.decision == Decision.NO_GO
 
@@ -308,7 +305,7 @@ class TestApplyPolicies:
             FileChange(path="src/auth/login.py", additions=5, deletions=3),
         ]
         with pytest.raises(NotImplementedError):
-            result = apply_policies(base_output, base_input)
+            apply_policies(base_output, base_input)
             # Once implemented:
             # Both migration (+0.15) and auth (+0.1) adjustments applied
             # assert result.risk_score > base_output.risk_score
@@ -323,6 +320,6 @@ class TestApplyPolicies:
             FileChange(path="src/auth/login.py", additions=5, deletions=3),
         ]
         with pytest.raises(NotImplementedError):
-            result = apply_policies(base_output, base_input)
+            apply_policies(base_output, base_input)
             # Once implemented:
             # assert result.risk_score <= 1.0

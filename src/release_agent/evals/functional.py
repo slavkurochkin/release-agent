@@ -15,7 +15,7 @@ Think of these as "unit tests for agent output."
 from __future__ import annotations
 
 from release_agent.evals.runner import EvalResult
-from release_agent.schemas import Decision, ReleaseOutput, RiskLevel
+from release_agent.schemas import ReleaseOutput
 
 
 def run_functional_evals(

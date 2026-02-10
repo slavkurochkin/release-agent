@@ -20,12 +20,9 @@ Uses OpenAI's text-embedding-3-small model for embeddings.
 
 from __future__ import annotations
 
-import numpy as np
-
 from release_agent.evals.runner import EvalResult
 from release_agent.llm import LLMClient
 from release_agent.schemas import ReleaseOutput
-
 
 # ---------------------------------------------------------------------------
 # Cosine Similarity

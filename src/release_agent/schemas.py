@@ -15,17 +15,16 @@ Key design decisions:
 
 from __future__ import annotations
 
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, model_validator
-
 
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
 
 
-class RiskLevel(str, Enum):
+class RiskLevel(StrEnum):
     """Risk classification for a release.
 
     LOW: Routine change, minimal blast radius
@@ -40,7 +39,7 @@ class RiskLevel(str, Enum):
     CRITICAL = "CRITICAL"
 
 
-class Decision(str, Enum):
+class Decision(StrEnum):
     """Binary release decision.
 
     GO: Safe to release (possibly with conditions)
@@ -110,7 +109,7 @@ class ReleaseInput(BaseModel):
     # commit_messages is provided. Use Pydantic's @model_validator decorator.
     # Hint: A release with no file changes AND no commits is probably invalid.
     @model_validator(mode='after')
-    def check_has_content(self) -> 'ReleaseInput':
+    def check_has_content(self) -> ReleaseInput:
         """Ensure the release has at least some content to assess."""
         if not self.files_changed and not self.commit_messages:
             raise ValueError("Release must have at least one of: " \
@@ -185,7 +184,7 @@ class ReleaseOutput(BaseModel):
     # - If decision is GO with conditions, the conditions list should not be empty
     # Hint: Use @model_validator(mode='after') for cross-field validation.
     @model_validator(mode='after')
-    def cehc_decision_consistency(self) -> 'ReleaseOutput':
+    def cehc_decision_consistency(self) -> ReleaseOutput:
         """Ensure the decision is consistent with the risk assessment."""
         # Rule 1: NO_GO decisions should have HIGH or CRITICAL risk level
         if self.decision == Decision.NO_GO and self.risk_level not in (
@@ -202,7 +201,7 @@ class ReleaseOutput(BaseModel):
                 f"Risk score is {self.risk_score} (> 0.7) but decision is GO."
                 f"High-risk releases should be NO_GO."
             )
-        
+
         # Rule 3: GO with conditions requires non-empty conditions list
         # (This one is a soft check -- uncomment if you want strict enforcement)
         # if self.decision == Decision.GO and self.risk_score > 0.3 and not self.conditions:
@@ -211,7 +210,7 @@ class ReleaseOutput(BaseModel):
         #     )
 
         return self
-       
+
 
     decision: Decision = Field(..., description="GO or NO_GO recommendation")
     risk_level: RiskLevel = Field(..., description="Overall risk classification")

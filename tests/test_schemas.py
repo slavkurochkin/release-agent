@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from release_agent.schemas import (
     CIResult,
@@ -24,7 +25,6 @@ from release_agent.schemas import (
     RiskFactor,
     RiskLevel,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -115,7 +115,7 @@ class TestFileChange:
 
     def test_file_change_negative_additions_rejected(self) -> None:
         """FileChange rejects negative line counts."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             FileChange(path="test.py", additions=-1)
 
 
@@ -157,25 +157,25 @@ class TestReleaseInput:
 
     def test_release_input_requires_repo(self) -> None:
         """ReleaseInput requires repo field."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReleaseInput(pr_number=1, title="test", author="user")
 
     def test_release_input_requires_positive_pr_number(self) -> None:
         """ReleaseInput requires pr_number > 0."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReleaseInput(repo="org/repo", pr_number=0, title="test", author="user")
 
     def test_release_input_requires_title(self) -> None:
         """ReleaseInput requires non-empty title."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReleaseInput(repo="org/repo", pr_number=1, title="", author="user")
 
     def test_release_input_empty_lists_default(self) -> None:
         """ReleaseInput defaults list fields to empty lists."""
         ri = ReleaseInput(
-            repo="org/repo", 
-            pr_number=1, 
-            title="test", 
+            repo="org/repo",
+            pr_number=1,
+            title="test",
             author="user",
             commit_messages=["fix: test"],
         )
@@ -186,9 +186,9 @@ class TestReleaseInput:
     def test_release_input_deployment_target_default(self) -> None:
         """ReleaseInput defaults deployment_target to 'production'."""
         ri = ReleaseInput(
-            repo="org/repo", 
-            pr_number=1, 
-            title="test", 
+            repo="org/repo",
+            pr_number=1,
+            title="test",
             author="user",
             commit_messages=["fix: test"],
             files_changed=[FileChange(path="some/file.py")]
@@ -236,9 +236,9 @@ class TestReleaseOutput:
             "summary": "Test summary for validation purposes.",
             "explanation": "This is a test explanation that is long enough to pass.",
         }
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReleaseOutput(**{**base, "risk_score": 1.5})
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReleaseOutput(**{**base, "risk_score": -0.1})
 
     def test_release_output_valid_enums(self) -> None:
@@ -249,14 +249,14 @@ class TestReleaseOutput:
             "summary": "Test summary for validation purposes.",
             "explanation": "This is a test explanation that is long enough to pass.",
         }
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReleaseOutput(**{**base, "decision": "MAYBE", "risk_level": "LOW"})
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReleaseOutput(**{**base, "decision": "GO", "risk_level": "EXTREME"})
 
     def test_release_output_minimum_summary_length(self) -> None:
         """ReleaseOutput requires summary of at least 10 characters."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             ReleaseOutput(
                 decision="GO",
                 risk_level="LOW",

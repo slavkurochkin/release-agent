@@ -21,12 +21,9 @@ risk assessments on multiple dimensions.
 
 from __future__ import annotations
 
-import json
-
 from release_agent.evals.runner import EvalResult
-from release_agent.llm import LLMClient, LLMConfig
+from release_agent.llm import LLMClient
 from release_agent.schemas import ReleaseInput, ReleaseOutput
-
 
 # ---------------------------------------------------------------------------
 # Judge Prompt

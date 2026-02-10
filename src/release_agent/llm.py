@@ -148,14 +148,15 @@ class LLMClient:
         except json.JSONDecodeError as e:
             raise ValueError(
                 f"LLM returned invalid JSON: {e}\nRaw content: {content[:500]}"
-            )
+            ) from e
 
         try:
             return ReleaseOutput.model_validate(data)
         except Exception as e:
             raise ValueError(
-                f"LLM output failed schema validation: {e}\nRaw data: {json.dumps(data, indent=2)[:500]}"
-            )
+                f"LLM output failed schema validation: {e}\n"
+                f"Raw data: {json.dumps(data, indent=2)[:500]}"
+            ) from e
 
     async def get_embedding(self, text: str) -> list[float]:
         """Get an embedding vector for the given text.

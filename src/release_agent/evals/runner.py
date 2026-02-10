@@ -20,17 +20,11 @@ Usage:
 
 from __future__ import annotations
 
-import asyncio
-import json
-import sys
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from release_agent.agent import ReleaseRiskAgent
-from release_agent.schemas import ReleaseInput, ReleaseOutput
-
 
 # ---------------------------------------------------------------------------
 # Result Types

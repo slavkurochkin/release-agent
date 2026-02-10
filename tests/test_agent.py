@@ -14,8 +14,7 @@ Run with: pytest tests/test_agent.py -v
 
 from __future__ import annotations
 
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
 
 import pytest
 

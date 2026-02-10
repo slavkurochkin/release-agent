@@ -16,8 +16,9 @@ is instructed to respond ONLY with valid JSON matching the output schema.
 
 from __future__ import annotations
 
-from release_agent.schemas import ReleaseInput, ReleaseOutput
+import json
 
+from release_agent.schemas import ReleaseInput, ReleaseOutput
 
 # ---------------------------------------------------------------------------
 # System Prompt
@@ -101,7 +102,6 @@ Analyze this release and provide your risk assessment as JSON."""
 # Prompt Builder
 # ---------------------------------------------------------------------------
 
-import json 
 
 def build_system_prompt() -> str:
     """Build the system prompt with the output schema injected.

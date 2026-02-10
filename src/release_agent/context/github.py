@@ -22,8 +22,7 @@ from typing import Protocol
 
 import httpx
 
-from release_agent.schemas import FileChange, ReleaseInput
-
+from release_agent.schemas import ReleaseInput
 
 # ---------------------------------------------------------------------------
 # Protocol (Interface)

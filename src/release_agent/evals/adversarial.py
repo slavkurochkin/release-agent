@@ -18,14 +18,6 @@ from __future__ import annotations
 
 from release_agent.agent import ReleaseRiskAgent
 from release_agent.evals.runner import EvalResult
-from release_agent.schemas import (
-    CIResult,
-    Decision,
-    FileChange,
-    ReleaseInput,
-    ReleaseOutput,
-)
-
 
 # ---------------------------------------------------------------------------
 # Adversarial Test Cases

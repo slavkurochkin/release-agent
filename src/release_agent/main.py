@@ -19,16 +19,13 @@ Then visit http://localhost:8000/docs for the interactive API docs.
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from release_agent.agent import ReleaseRiskAgent
 from release_agent.schemas import ReleaseInput, ReleaseOutput
-
 
 # ---------------------------------------------------------------------------
 # Application Lifespan (startup/shutdown)

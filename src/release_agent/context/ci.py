@@ -20,10 +20,7 @@ from __future__ import annotations
 import os
 from typing import Protocol
 
-import httpx
-
 from release_agent.schemas import CIResult
-
 
 # ---------------------------------------------------------------------------
 # Protocol

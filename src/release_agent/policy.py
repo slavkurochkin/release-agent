@@ -21,25 +21,21 @@ Architecture:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Callable
+from collections.abc import Callable
+from dataclasses import dataclass
+from enum import StrEnum
 
 from release_agent.schemas import (
-    Decision,
     ReleaseInput,
     ReleaseOutput,
-    RiskFactor,
-    RiskLevel,
 )
-
 
 # ---------------------------------------------------------------------------
 # Policy Types
 # ---------------------------------------------------------------------------
 
 
-class PolicyAction(str, Enum):
+class PolicyAction(StrEnum):
     """What action to take when a policy rule is violated.
 
     FORCE_NO_GO: Override decision to NO_GO regardless of LLM output
