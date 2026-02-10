@@ -1,0 +1,41 @@
+# Version control
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*.egg-info
+dist
+build
+.venv
+venv
+
+# IDE
+.vscode
+.idea
+
+# Environment (never include secrets in the image)
+.env
+
+# Eval results
+eval_results/
+
+# Tests (not needed in production image)
+tests/
+
+# Documentation
+docs/
+*.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Dashboard (separate deploy)
+dashboard/

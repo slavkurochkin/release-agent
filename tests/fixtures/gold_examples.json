@@ -1,0 +1,516 @@
+[
+  {
+    "id": "safe_docs_change",
+    "description": "Documentation-only change — should be LOW risk, GO",
+    "input": {
+      "repo": "myorg/backend-api",
+      "pr_number": 101,
+      "title": "Update API documentation for v2 endpoints",
+      "description": "Updates the README and API docs to reflect the new v2 endpoint naming convention. No code changes.",
+      "author": "alice",
+      "files_changed": [
+        {"path": "README.md", "additions": 15, "deletions": 5, "patch": ""},
+        {"path": "docs/api/endpoints.md", "additions": 40, "deletions": 20, "patch": ""},
+        {"path": "docs/api/examples.md", "additions": 10, "deletions": 3, "patch": ""}
+      ],
+      "ci_results": [
+        {"name": "lint", "passed": true, "details": "No issues"},
+        {"name": "build", "passed": true, "details": "Build successful"},
+        {"name": "docs-check", "passed": true, "details": "All links valid"}
+      ],
+      "commit_messages": ["Update API docs for v2 endpoints", "Fix broken link in examples"],
+      "recent_incidents": [],
+      "deployment_target": "production"
+    },
+    "expected_output": {
+      "decision": "GO",
+      "risk_level": "LOW",
+      "risk_score": 0.1,
+      "risk_factors": [
+        {
+          "category": "scope",
+          "description": "Documentation-only change with no code modifications",
+          "severity": "LOW"
+        }
+      ],
+      "summary": "Low-risk documentation update with no code changes. All CI checks pass.",
+      "explanation": "This PR only modifies documentation files (README.md and docs/). No application code is changed, all CI checks pass, and there are no recent incidents. The blast radius is minimal since documentation changes don't affect runtime behavior.",
+      "conditions": [],
+      "recommended_actions": []
+    }
+  },
+  {
+    "id": "failing_ci",
+    "description": "Test failures in CI — should be NO_GO regardless of change scope",
+    "input": {
+      "repo": "myorg/backend-api",
+      "pr_number": 102,
+      "title": "Add user preferences endpoint",
+      "description": "Adds a new /users/preferences endpoint for managing user settings.",
+      "author": "bob",
+      "files_changed": [
+        {"path": "src/routes/preferences.py", "additions": 85, "deletions": 0, "patch": ""},
+        {"path": "src/models/preferences.py", "additions": 30, "deletions": 0, "patch": ""},
+        {"path": "tests/test_preferences.py", "additions": 60, "deletions": 0, "patch": ""}
+      ],
+      "ci_results": [
+        {"name": "unit-tests", "passed": false, "details": "3 tests failed in test_preferences.py"},
+        {"name": "lint", "passed": true, "details": "No issues"},
+        {"name": "build", "passed": true, "details": "Build successful"}
+      ],
+      "commit_messages": ["Add preferences endpoint", "Add preference model", "Add tests"],
+      "recent_incidents": [],
+      "deployment_target": "production"
+    },
+    "expected_output": {
+      "decision": "NO_GO",
+      "risk_level": "HIGH",
+      "risk_score": 0.75,
+      "risk_factors": [
+        {
+          "category": "ci_failure",
+          "description": "Unit tests are failing — 3 tests failed in test_preferences.py",
+          "severity": "HIGH"
+        }
+      ],
+      "summary": "CI tests are failing. Cannot deploy with test failures.",
+      "explanation": "The unit-tests CI check has failed with 3 test failures in test_preferences.py. Deploying code with failing tests risks introducing bugs to production. The test failures must be fixed before this release can proceed.",
+      "conditions": [],
+      "recommended_actions": [
+        "Fix the 3 failing tests in test_preferences.py",
+        "Ensure all CI checks pass before re-submitting"
+      ]
+    }
+  },
+  {
+    "id": "database_migration",
+    "description": "Database migration with proper rollback — should be HIGH risk but GO with conditions",
+    "input": {
+      "repo": "myorg/backend-api",
+      "pr_number": 103,
+      "title": "Add user activity tracking table",
+      "description": "Adds a new user_activity table for tracking feature usage. Includes rollback migration. Table is append-only, no existing data is modified.",
+      "author": "carol",
+      "files_changed": [
+        {"path": "migrations/0015_add_user_activity.sql", "additions": 25, "deletions": 0, "patch": "CREATE TABLE user_activity (...)"},
+        {"path": "migrations/0015_rollback.sql", "additions": 5, "deletions": 0, "patch": "DROP TABLE IF EXISTS user_activity;"},
+        {"path": "src/models/activity.py", "additions": 40, "deletions": 0, "patch": ""},
+        {"path": "src/routes/activity.py", "additions": 35, "deletions": 0, "patch": ""}
+      ],
+      "ci_results": [
+        {"name": "unit-tests", "passed": true, "details": "All 156 tests passed"},
+        {"name": "migration-test", "passed": true, "details": "Migration applies and rolls back cleanly"},
+        {"name": "lint", "passed": true, "details": "No issues"},
+        {"name": "build", "passed": true, "details": "Build successful"}
+      ],
+      "commit_messages": ["Add user_activity migration", "Add rollback migration", "Add activity model and routes"],
+      "recent_incidents": [],
+      "deployment_target": "production"
+    },
+    "expected_output": {
+      "decision": "GO",
+      "risk_level": "HIGH",
+      "risk_score": 0.55,
+      "risk_factors": [
+        {
+          "category": "database",
+          "description": "Database migration adds a new table. While it's append-only and has a rollback, all migrations carry inherent risk.",
+          "severity": "HIGH"
+        }
+      ],
+      "summary": "Database migration to add a new table. Rollback exists and migration tests pass, but requires careful monitoring.",
+      "explanation": "This release includes a database migration (0015_add_user_activity.sql) which adds a new table. Positive factors: the migration is append-only (no existing data modified), a rollback migration exists, and the migration-test CI check passes. However, database migrations always carry risk due to potential locking or performance impacts.",
+      "conditions": [
+        "Run migration during low-traffic window",
+        "Have DBA on standby during deployment"
+      ],
+      "recommended_actions": [
+        "Monitor database connection pool and query latency during migration",
+        "Verify rollback migration works in staging first",
+        "Have the rollback SQL ready to execute if issues arise"
+      ]
+    }
+  },
+  {
+    "id": "auth_changes",
+    "description": "Changes to authentication code — should be HIGH risk",
+    "input": {
+      "repo": "myorg/backend-api",
+      "pr_number": 104,
+      "title": "Migrate from session-based to JWT authentication",
+      "description": "Major auth refactor: replaces session cookies with JWT tokens. All endpoints now validate JWTs instead of session IDs. Includes migration guide for existing sessions.",
+      "author": "dave",
+      "files_changed": [
+        {"path": "src/auth/jwt_handler.py", "additions": 120, "deletions": 0, "patch": ""},
+        {"path": "src/auth/middleware.py", "additions": 45, "deletions": 80, "patch": ""},
+        {"path": "src/auth/session.py", "additions": 0, "deletions": 150, "patch": ""},
+        {"path": "src/routes/login.py", "additions": 30, "deletions": 25, "patch": ""},
+        {"path": "src/routes/logout.py", "additions": 15, "deletions": 20, "patch": ""},
+        {"path": "tests/test_auth.py", "additions": 200, "deletions": 100, "patch": ""},
+        {"path": "docs/auth_migration.md", "additions": 80, "deletions": 0, "patch": ""}
+      ],
+      "ci_results": [
+        {"name": "unit-tests", "passed": true, "details": "All 298 tests passed"},
+        {"name": "integration-tests", "passed": true, "details": "All 45 integration tests passed"},
+        {"name": "security-scan", "passed": true, "details": "No vulnerabilities detected"},
+        {"name": "lint", "passed": true, "details": "No issues"},
+        {"name": "build", "passed": true, "details": "Build successful"}
+      ],
+      "commit_messages": ["Add JWT handler", "Replace session middleware with JWT validation", "Remove session module", "Update login/logout routes", "Add comprehensive auth tests", "Add migration guide"],
+      "recent_incidents": [],
+      "deployment_target": "production"
+    },
+    "expected_output": {
+      "decision": "GO",
+      "risk_level": "HIGH",
+      "risk_score": 0.65,
+      "risk_factors": [
+        {
+          "category": "authentication",
+          "description": "Complete authentication system overhaul from sessions to JWT. Affects every authenticated endpoint.",
+          "severity": "CRITICAL"
+        },
+        {
+          "category": "scope",
+          "description": "Large change touching 7 files with 490 lines added and 375 deleted",
+          "severity": "MEDIUM"
+        }
+      ],
+      "summary": "Major auth system migration from sessions to JWT. Comprehensive tests pass but blast radius is very high.",
+      "explanation": "This is a fundamental change to the authentication system, migrating from session-based to JWT authentication. While all CI checks pass including security scans, the blast radius is enormous — every authenticated request in the system is affected. The 150-line deletion of session.py and 120-line addition of jwt_handler.py represent a complete auth system replacement. Positive factors: extensive test coverage (298 unit + 45 integration tests), security scan passes, and migration documentation exists.",
+      "conditions": [
+        "Deploy during maintenance window",
+        "Keep session-based auth available as fallback for 24 hours",
+        "Monitor authentication error rates closely after deploy"
+      ],
+      "recommended_actions": [
+        "Stage a canary deploy to 5% of traffic first",
+        "Set up alerts for JWT validation failures",
+        "Ensure old session tokens are handled gracefully during transition",
+        "Have rollback plan ready to re-enable session auth"
+      ]
+    }
+  },
+  {
+    "id": "deploy_during_incident",
+    "description": "Routine change but during an active incident — should add warnings",
+    "input": {
+      "repo": "myorg/backend-api",
+      "pr_number": 105,
+      "title": "Update logging format",
+      "description": "Changes log output from plain text to JSON format for better parsing.",
+      "author": "eve",
+      "files_changed": [
+        {"path": "src/logging.py", "additions": 20, "deletions": 15, "patch": ""},
+        {"path": "src/config.py", "additions": 3, "deletions": 1, "patch": ""}
+      ],
+      "ci_results": [
+        {"name": "unit-tests", "passed": true, "details": "All 156 tests passed"},
+        {"name": "lint", "passed": true, "details": "No issues"},
+        {"name": "build", "passed": true, "details": "Build successful"}
+      ],
+      "commit_messages": ["Switch to JSON logging format"],
+      "recent_incidents": [
+        "[P1] Database connection pool exhausted — ongoing, started 2 hours ago",
+        "[P2] Elevated 5xx error rates on /api/orders endpoint — monitoring"
+      ],
+      "deployment_target": "production"
+    },
+    "expected_output": {
+      "decision": "GO",
+      "risk_level": "MEDIUM",
+      "risk_score": 0.4,
+      "risk_factors": [
+        {
+          "category": "operational",
+          "description": "Deploying during active P1 and P2 incidents increases risk due to reduced team capacity and potential for confusion",
+          "severity": "MEDIUM"
+        },
+        {
+          "category": "observability",
+          "description": "Changing logging format during an incident could make it harder to correlate old and new log entries",
+          "severity": "MEDIUM"
+        }
+      ],
+      "summary": "Low-risk logging change, but deploying during active incidents adds operational risk.",
+      "explanation": "The code change itself is low risk — switching logging format in 2 files with all tests passing. However, there are 2 active production incidents (P1 database pool exhaustion, P2 elevated 5xx). Deploying during incidents is risky because: 1) the team's attention is split, 2) if something goes wrong it's harder to isolate the cause, 3) changing the logging format specifically during an incident makes it harder to read logs consistently.",
+      "conditions": [
+        "Confirm with on-call that this deploy won't interfere with incident response",
+        "Consider waiting until the P1 incident is resolved"
+      ],
+      "recommended_actions": [
+        "Wait for P1 resolution before deploying if possible",
+        "If deploying now, notify the incident channel",
+        "Ensure log parsing tools can handle both old and new formats during transition"
+      ]
+    }
+  },
+  {
+    "id": "simple_bugfix",
+    "description": "Small, well-tested bugfix — should be LOW risk, easy GO",
+    "input": {
+      "repo": "myorg/backend-api",
+      "pr_number": 106,
+      "title": "Fix off-by-one error in pagination",
+      "description": "Fixes a bug where the last page of results was sometimes empty. The offset calculation was using > instead of >=.",
+      "author": "frank",
+      "files_changed": [
+        {"path": "src/utils/pagination.py", "additions": 1, "deletions": 1, "patch": "-    if offset > total_count:\n+    if offset >= total_count:"},
+        {"path": "tests/test_pagination.py", "additions": 15, "deletions": 0, "patch": ""}
+      ],
+      "ci_results": [
+        {"name": "unit-tests", "passed": true, "details": "All 157 tests passed"},
+        {"name": "lint", "passed": true, "details": "No issues"},
+        {"name": "build", "passed": true, "details": "Build successful"}
+      ],
+      "commit_messages": ["Fix off-by-one in pagination offset check", "Add regression test for last page"],
+      "recent_incidents": [],
+      "deployment_target": "production"
+    },
+    "expected_output": {
+      "decision": "GO",
+      "risk_level": "LOW",
+      "risk_score": 0.1,
+      "risk_factors": [
+        {
+          "category": "scope",
+          "description": "Single-line bugfix in utility function with regression test added",
+          "severity": "LOW"
+        }
+      ],
+      "summary": "Minimal bugfix with a single character change and new regression test. Very low risk.",
+      "explanation": "This is a textbook safe release: a one-line fix (changing > to >=) in a pagination utility with a clear bug description, a regression test added, and all CI passing. The change has minimal blast radius and fixes an actual user-facing bug.",
+      "conditions": [],
+      "recommended_actions": []
+    }
+  },
+  {
+    "id": "infra_change",
+    "description": "Infrastructure configuration changes — should be HIGH/CRITICAL risk",
+    "input": {
+      "repo": "myorg/infrastructure",
+      "pr_number": 201,
+      "title": "Upgrade Kubernetes cluster to 1.29",
+      "description": "Upgrades the production Kubernetes cluster from 1.27 to 1.29. Includes node pool recreation and API deprecation fixes.",
+      "author": "grace",
+      "files_changed": [
+        {"path": "terraform/gke.tf", "additions": 30, "deletions": 25, "patch": ""},
+        {"path": "terraform/node_pools.tf", "additions": 45, "deletions": 40, "patch": ""},
+        {"path": "k8s/deployments/api.yaml", "additions": 5, "deletions": 5, "patch": ""},
+        {"path": "k8s/deployments/worker.yaml", "additions": 5, "deletions": 5, "patch": ""},
+        {"path": "k8s/rbac.yaml", "additions": 10, "deletions": 8, "patch": ""}
+      ],
+      "ci_results": [
+        {"name": "terraform-plan", "passed": true, "details": "Plan: 8 to add, 12 to change, 4 to destroy"},
+        {"name": "k8s-validate", "passed": true, "details": "All manifests valid for 1.29"},
+        {"name": "lint", "passed": true, "details": "No issues"}
+      ],
+      "commit_messages": ["Upgrade GKE to 1.29", "Update node pool config", "Fix deprecated API versions in deployments", "Update RBAC for 1.29"],
+      "recent_incidents": [],
+      "deployment_target": "production"
+    },
+    "expected_output": {
+      "decision": "NO_GO",
+      "risk_level": "CRITICAL",
+      "risk_score": 0.85,
+      "risk_factors": [
+        {
+          "category": "infrastructure",
+          "description": "Kubernetes version upgrade affecting the entire production cluster",
+          "severity": "CRITICAL"
+        },
+        {
+          "category": "scope",
+          "description": "Terraform plan shows 4 resources to destroy and 8 to add — significant infrastructure changes",
+          "severity": "HIGH"
+        },
+        {
+          "category": "blast_radius",
+          "description": "Node pool recreation will cause pod rescheduling across the entire cluster",
+          "severity": "HIGH"
+        }
+      ],
+      "summary": "Major Kubernetes upgrade with node pool recreation. Too risky for standard deployment — needs maintenance window and detailed rollback plan.",
+      "explanation": "Upgrading Kubernetes from 1.27 to 1.29 (skipping 1.28) is a major infrastructure change that affects every workload in the cluster. The terraform plan shows 4 resources being destroyed (likely node pools), which means pods will be rescheduled. While the CI checks pass, this type of change requires a maintenance window, detailed rollback plan, and coordination with all service teams.",
+      "conditions": [],
+      "recommended_actions": [
+        "Schedule a maintenance window with at least 2 hours buffer",
+        "Upgrade staging cluster first and soak for 48 hours",
+        "Document rollback procedure for reverting to 1.27",
+        "Notify all service teams about potential pod rescheduling",
+        "Have infrastructure team on standby during upgrade"
+      ]
+    }
+  },
+  {
+    "id": "payment_code_change",
+    "description": "Changes to payment processing — should be HIGH risk",
+    "input": {
+      "repo": "myorg/backend-api",
+      "pr_number": 107,
+      "title": "Add support for Apple Pay",
+      "description": "Integrates Apple Pay as a payment method. Adds new payment handler, webhook endpoint, and updates the checkout flow.",
+      "author": "heidi",
+      "files_changed": [
+        {"path": "src/payments/apple_pay.py", "additions": 150, "deletions": 0, "patch": ""},
+        {"path": "src/payments/handler.py", "additions": 25, "deletions": 5, "patch": ""},
+        {"path": "src/routes/webhooks.py", "additions": 40, "deletions": 0, "patch": ""},
+        {"path": "src/routes/checkout.py", "additions": 15, "deletions": 3, "patch": ""},
+        {"path": "tests/test_apple_pay.py", "additions": 120, "deletions": 0, "patch": ""},
+        {"path": "tests/test_checkout.py", "additions": 30, "deletions": 5, "patch": ""}
+      ],
+      "ci_results": [
+        {"name": "unit-tests", "passed": true, "details": "All 312 tests passed"},
+        {"name": "integration-tests", "passed": true, "details": "All 52 integration tests passed"},
+        {"name": "security-scan", "passed": true, "details": "No vulnerabilities"},
+        {"name": "lint", "passed": true, "details": "No issues"},
+        {"name": "build", "passed": true, "details": "Build successful"}
+      ],
+      "commit_messages": ["Add Apple Pay payment handler", "Add Apple Pay webhook endpoint", "Update checkout flow for Apple Pay", "Add comprehensive tests"],
+      "recent_incidents": [],
+      "deployment_target": "production"
+    },
+    "expected_output": {
+      "decision": "GO",
+      "risk_level": "HIGH",
+      "risk_score": 0.6,
+      "risk_factors": [
+        {
+          "category": "payment",
+          "description": "Changes to payment processing code — any bug could result in financial loss or failed transactions",
+          "severity": "HIGH"
+        },
+        {
+          "category": "new_integration",
+          "description": "New external integration with Apple Pay introduces a dependency on an external service",
+          "severity": "MEDIUM"
+        },
+        {
+          "category": "scope",
+          "description": "6 files changed with significant new code (380 additions)",
+          "severity": "MEDIUM"
+        }
+      ],
+      "summary": "New payment integration with Apple Pay. Well-tested but touches critical payment code paths.",
+      "explanation": "This release adds Apple Pay support, which involves changes to payment processing code (apple_pay.py, handler.py), a new webhook endpoint, and checkout flow modifications. While the change is well-tested (312 unit + 52 integration tests pass) and the security scan is clean, payment code changes carry inherent financial risk. The new webhook endpoint also adds an external attack surface.",
+      "conditions": [
+        "Enable Apple Pay for internal users first (feature flag)",
+        "Monitor transaction success rates for the first 24 hours"
+      ],
+      "recommended_actions": [
+        "Deploy behind a feature flag, enable for internal users first",
+        "Set up alerts for Apple Pay transaction failures",
+        "Monitor webhook endpoint for unusual traffic patterns",
+        "Have payment team review the webhook signature validation"
+      ]
+    }
+  },
+  {
+    "id": "multiple_high_risk_areas",
+    "description": "Changes to DB, auth, AND payments simultaneously — should be CRITICAL",
+    "input": {
+      "repo": "myorg/backend-api",
+      "pr_number": 108,
+      "title": "Implement user data encryption at rest",
+      "description": "Encrypts all PII fields in the database. Includes migration to encrypt existing data, auth changes for key management, and payment data re-encryption.",
+      "author": "ivan",
+      "files_changed": [
+        {"path": "migrations/0020_encrypt_pii.sql", "additions": 80, "deletions": 0, "patch": ""},
+        {"path": "src/auth/key_management.py", "additions": 90, "deletions": 0, "patch": ""},
+        {"path": "src/auth/middleware.py", "additions": 15, "deletions": 5, "patch": ""},
+        {"path": "src/models/user.py", "additions": 40, "deletions": 20, "patch": ""},
+        {"path": "src/payments/encryption.py", "additions": 60, "deletions": 30, "patch": ""},
+        {"path": "src/utils/crypto.py", "additions": 100, "deletions": 0, "patch": ""},
+        {"path": "tests/test_encryption.py", "additions": 150, "deletions": 0, "patch": ""}
+      ],
+      "ci_results": [
+        {"name": "unit-tests", "passed": true, "details": "All 330 tests passed"},
+        {"name": "integration-tests", "passed": true, "details": "All 55 integration tests passed"},
+        {"name": "security-scan", "passed": true, "details": "No vulnerabilities"},
+        {"name": "migration-test", "passed": true, "details": "Migration completed in 45 seconds"},
+        {"name": "lint", "passed": true, "details": "No issues"},
+        {"name": "build", "passed": true, "details": "Build successful"}
+      ],
+      "commit_messages": ["Add PII encryption migration", "Add key management module", "Update user model for encrypted fields", "Re-encrypt payment data", "Add crypto utilities", "Add encryption tests"],
+      "recent_incidents": [],
+      "deployment_target": "production"
+    },
+    "expected_output": {
+      "decision": "NO_GO",
+      "risk_level": "CRITICAL",
+      "risk_score": 0.8,
+      "risk_factors": [
+        {
+          "category": "database",
+          "description": "Large database migration encrypting existing PII data — long-running and hard to reverse",
+          "severity": "CRITICAL"
+        },
+        {
+          "category": "authentication",
+          "description": "Changes to auth middleware and new key management system",
+          "severity": "HIGH"
+        },
+        {
+          "category": "payment",
+          "description": "Re-encryption of payment data — any error could corrupt financial data",
+          "severity": "CRITICAL"
+        },
+        {
+          "category": "scope",
+          "description": "7 files with 535 additions touching 3 critical systems simultaneously",
+          "severity": "HIGH"
+        }
+      ],
+      "summary": "Simultaneous changes to database, auth, and payment systems. Too many critical systems affected at once.",
+      "explanation": "This release touches three of the highest-risk areas simultaneously: database migrations (PII encryption), authentication (key management), and payment processing (re-encryption). While tests pass, the combination of risks is multiplicative — if the migration fails, it could affect both auth AND payment systems. The 80-line migration encrypting existing data is essentially irreversible without a restore from backup. This should be broken into smaller releases: 1) crypto utilities + key management, 2) user data encryption, 3) payment data re-encryption.",
+      "conditions": [],
+      "recommended_actions": [
+        "Break this into 3 separate releases, each targeting one system",
+        "Deploy crypto utilities and key management first as a standalone change",
+        "Test the data migration on a production-sized database copy",
+        "Create a detailed rollback plan including database restore procedures",
+        "Schedule each phase with adequate soak time between deployments"
+      ]
+    }
+  },
+  {
+    "id": "test_only_change",
+    "description": "Only test files changed — should be very LOW risk",
+    "input": {
+      "repo": "myorg/backend-api",
+      "pr_number": 109,
+      "title": "Increase test coverage for user module",
+      "description": "Adds missing test cases for edge cases in user registration and profile update flows.",
+      "author": "judy",
+      "files_changed": [
+        {"path": "tests/test_user_registration.py", "additions": 80, "deletions": 5, "patch": ""},
+        {"path": "tests/test_user_profile.py", "additions": 60, "deletions": 10, "patch": ""},
+        {"path": "tests/conftest.py", "additions": 15, "deletions": 0, "patch": ""}
+      ],
+      "ci_results": [
+        {"name": "unit-tests", "passed": true, "details": "All 175 tests passed (18 new)"},
+        {"name": "lint", "passed": true, "details": "No issues"},
+        {"name": "build", "passed": true, "details": "Build successful"}
+      ],
+      "commit_messages": ["Add registration edge case tests", "Add profile update tests", "Add test fixtures"],
+      "recent_incidents": [],
+      "deployment_target": "production"
+    },
+    "expected_output": {
+      "decision": "GO",
+      "risk_level": "LOW",
+      "risk_score": 0.05,
+      "risk_factors": [
+        {
+          "category": "scope",
+          "description": "Only test files modified — no production code changes",
+          "severity": "LOW"
+        }
+      ],
+      "summary": "Test-only changes adding coverage. Zero production code impact.",
+      "explanation": "This PR only adds and modifies test files (test_user_registration.py, test_user_profile.py, conftest.py). No production application code is changed. All 175 tests pass including the 18 new ones. This is one of the safest types of releases since test files don't affect production behavior.",
+      "conditions": [],
+      "recommended_actions": []
+    }
+  }
+]
