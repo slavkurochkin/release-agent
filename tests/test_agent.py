@@ -33,7 +33,10 @@ from release_agent.schemas import (
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
-
+@pytest.fixture(autouse=True)
+def fake_openai_key(monkeypatch):
+    """Provide a fake API key so the OpenAI client can initialize."""
+    monkeypatch.setenv("OPENAI_API_KEY", "test-fake-key")
 
 @pytest.fixture
 def sample_input() -> ReleaseInput:
@@ -123,12 +126,11 @@ class TestAgentAssess:
         agent.llm = mock_llm
 
         # This will raise NotImplementedError until the TODO is done
-        with pytest.raises(NotImplementedError):
-            result = await agent.assess(sample_input)
-            # Once implemented, these assertions should hold:
-            # assert isinstance(result, ReleaseOutput)
-            # assert result.decision == Decision.GO
-            # assert result.risk_score == 0.1
+        result = await agent.assess(sample_input)
+        # Once implemented, these assertions should hold:
+        assert isinstance(result, ReleaseOutput)
+        assert result.decision == Decision.GO
+        assert result.risk_score == 0.1
 
     @pytest.mark.asyncio
     async def test_assess_calls_llm_with_prompts(
@@ -144,13 +146,11 @@ class TestAgentAssess:
         mock_llm.assess_risk.return_value = sample_output
         agent.llm = mock_llm
 
-        with pytest.raises(NotImplementedError):
-            await agent.assess(sample_input)
-            # Once implemented:
-            # mock_llm.assess_risk.assert_called_once()
-            # args = mock_llm.assess_risk.call_args
-            # assert "system" prompt contains risk assessment instructions
-            # assert "user" prompt contains the release data
+        await agent.assess(sample_input)
+        mock_llm.assess_risk.assert_called_once()
+        # args = mock_llm.assess_risk.call_args
+        # assert "system" prompt contains risk assessment instructions
+        # assert "user" prompt contains the release data
 
 
 # ---------------------------------------------------------------------------
@@ -161,8 +161,10 @@ class TestAgentAssess:
 class TestCLI:
     """Tests for the CLI entry point."""
 
-    def test_main_prints_usage(self, capsys) -> None:
-        """main() should print usage info when called without args."""
-        main()
-        captured = capsys.readouterr()
-        assert "TODO" in captured.out or "Usage" in captured.out
+    def test_main_prints_usage(self, capsys, monkeypatch) -> None:
+            """main() should print usage info when called without args."""
+            monkeypatch.setattr("sys.argv", ["release-agent"])
+            monkeypatch.setattr("sys.stdin", type("FakeTTY", (), {"isatty": lambda self: True})())
+            main()
+            captured = capsys.readouterr()
+            assert "usage" in captured.out.lower()

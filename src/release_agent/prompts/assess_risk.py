@@ -101,6 +101,7 @@ Analyze this release and provide your risk assessment as JSON."""
 # Prompt Builder
 # ---------------------------------------------------------------------------
 
+import json 
 
 def build_system_prompt() -> str:
     """Build the system prompt with the output schema injected.
@@ -122,7 +123,9 @@ def build_system_prompt() -> str:
     #    return SYSTEM_PROMPT.format(schema=schema_str)
     #
     # Hint: The {schema} placeholder in SYSTEM_PROMPT is where it goes.
-    raise NotImplementedError("TODO: Build system prompt with schema")
+    schema = ReleaseOutput.model_json_schema()
+    schema_str = json.dumps(schema, indent=2)
+    return SYSTEM_PROMPT.format(schema=schema_str)
 
 
 def build_user_prompt(release: ReleaseInput) -> str:
@@ -166,4 +169,60 @@ def build_user_prompt(release: ReleaseInput) -> str:
     # 6. Return USER_PROMPT_TEMPLATE.format(...) with all the values
     #
     # Hint: Use "\n".join() to combine list items into sections.
-    raise NotImplementedError("TODO: Build user prompt from release data")
+    # Files section
+    if release.files_changed:
+        files_lines = []
+        for f in release.files_changed:
+            line = f"- `{f.path}` (+{f.additions}/-{f.deletions})"
+            files_lines.append(line)
+            if f.patch:
+                files_lines.append(f"  ```\n  {f.patch}\n  ```")
+        files_section = "\n".join(files_lines)
+    else:
+        files_section = "No file changes provided."
+
+    # CI section
+    if release.ci_results:
+        ci_lines = []
+        for ci in release.ci_results:
+            status = "PASSED" if ci.passed else "FAILED"
+            line = f"- {ci.name}: {status}"
+            if ci.details:
+                line += f" -- {ci.details}"
+            ci_lines.append(line)
+        ci_section = "\n".join(ci_lines)
+    else:
+        ci_section = "No CI results provided."
+
+    # Commits section
+    if release.commit_messages:
+        commits_section = "\n".join(f"- {msg}" for msg in release.commit_messages)
+    else:
+        commits_section = "No commit messages provided."
+
+    # Incidents section
+    if release.recent_incidents:
+        incidents_section = "\n".join(f"- {inc}" for inc in release.recent_incidents)
+    else:
+        incidents_section = "No recent incidents."
+
+    # Totals
+    num_files = len(release.files_changed)
+    total_additions = sum(f.additions for f in release.files_changed)
+    total_deletions = sum(f.deletions for f in release.files_changed)
+
+    return USER_PROMPT_TEMPLATE.format(
+        repo=release.repo,
+        pr_number=release.pr_number,
+        title=release.title,
+        author=release.author,
+        deployment_target=release.deployment_target,
+        description=release.description or "No description provided.",
+        num_files=num_files,
+        total_additions=total_additions,
+        total_deletions=total_deletions,
+        files_section=files_section,
+        ci_section=ci_section,
+        commits_section=commits_section,
+        incidents_section=incidents_section,
+    )

@@ -68,7 +68,8 @@ class LLMClient:
         # - Store it as self._client
         # Hint: AsyncOpenAI(api_key=...) — if api_key is None, the SDK
         #   automatically reads from the OPENAI_API_KEY env var.
-        self._client: AsyncOpenAI | None = None  # Replace with real init
+        api_key = self.config.api_key or os.environ.get("OPENAI_API_KEY")
+        self._client = AsyncOpenAI(api_key=api_key)
 
     @retry(
         stop=stop_after_attempt(3),
@@ -127,7 +128,34 @@ class LLMClient:
         #    with a helpful message including the raw content.
         #
         # Hint: Wrap the parse/validate in try/except to give clear errors.
-        raise NotImplementedError("TODO: Implement LLM API call")
+        messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+        ]
+
+        response = await self._client.chat.completions.create(
+            model=self.config.model,
+            messages=messages,
+            temperature=self.config.temperature,
+            max_tokens=self.config.max_tokens,
+            response_format={"type": "json_object"},
+        )
+
+        content = response.choices[0].message.content
+
+        try:
+            data = json.loads(content)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"LLM returned invalid JSON: {e}\nRaw content: {content[:500]}"
+            )
+
+        try:
+            return ReleaseOutput.model_validate(data)
+        except Exception as e:
+            raise ValueError(
+                f"LLM output failed schema validation: {e}\nRaw data: {json.dumps(data, indent=2)[:500]}"
+            )
 
     async def get_embedding(self, text: str) -> list[float]:
         """Get an embedding vector for the given text.
@@ -161,4 +189,4 @@ class LLMClient:
         # Hint: Use ReleaseOutput.model_json_schema()
         # This is useful for including in the system prompt so the LLM
         # knows exactly what format to produce.
-        raise NotImplementedError("TODO: Generate JSON schema")
+        return ReleaseOutput.model_json_schema()

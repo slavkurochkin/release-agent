@@ -173,17 +173,25 @@ class TestReleaseInput:
     def test_release_input_empty_lists_default(self) -> None:
         """ReleaseInput defaults list fields to empty lists."""
         ri = ReleaseInput(
-            repo="org/repo", pr_number=1, title="test", author="user"
+            repo="org/repo", 
+            pr_number=1, 
+            title="test", 
+            author="user",
+            commit_messages=["fix: test"],
         )
         assert ri.files_changed == []
         assert ri.ci_results == []
-        assert ri.commit_messages == []
         assert ri.recent_incidents == []
 
     def test_release_input_deployment_target_default(self) -> None:
         """ReleaseInput defaults deployment_target to 'production'."""
         ri = ReleaseInput(
-            repo="org/repo", pr_number=1, title="test", author="user"
+            repo="org/repo", 
+            pr_number=1, 
+            title="test", 
+            author="user",
+            commit_messages=["fix: test"],
+            files_changed=[FileChange(path="some/file.py")]
         )
         assert ri.deployment_target == "production"
 
