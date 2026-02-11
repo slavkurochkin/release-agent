@@ -20,6 +20,8 @@ from __future__ import annotations
 import os
 from typing import Protocol
 
+import httpx
+
 from release_agent.schemas import CIResult
 
 # ---------------------------------------------------------------------------
@@ -70,10 +72,11 @@ class GitHubActionsCIClient:
             token: GitHub token with repo access
         """
         self._token = token or os.environ.get("GITHUB_TOKEN", "")
-        self._headers = {
-            "Authorization": f"Bearer {self._token}",
+        self._headers: dict[str, str] = {
             "Accept": "application/vnd.github.v3+json",
         }
+        if self._token:
+            self._headers["Authorization"] = f"Bearer {self._token}"
 
     async def get_ci_results(self, repo: str, ref: str) -> list[CIResult]:
         """Fetch check run results for a commit.
@@ -112,9 +115,29 @@ class GitHubActionsCIClient:
         # Hint: Check run conclusions can be: success, failure, neutral,
         # cancelled, skipped, timed_out, action_required.
         # For our purposes, only "success" counts as passed.
-        raise NotImplementedError("TODO: Implement GitHub Actions CI fetch")
+        # raise NotImplementedError("TODO: Implement GitHub Actions CI fetch")
 
+        async with httpx.AsyncClient(
+            base_url=self.BASE_URL,
+            headers=self._headers,
+            timeout=30.0,
+        ) as client:
+            resp = await client.get(
+                f"/repos/{repo}/commits/{ref}/check-runs",
+                params={"per_page": 100},
+            )
+            data = resp.json()
 
+            results = []
+            for run in data["check_runs"]:
+                passed = run["conclusion"] == "success"
+                results.append(CIResult(
+                    name=run["name"],
+                    passed=passed,
+                    details=run.get("output", {}).get("summary", ""),
+                ))
+
+            return results
 # ---------------------------------------------------------------------------
 # Mock Implementation
 # ---------------------------------------------------------------------------
@@ -155,4 +178,12 @@ class MockCIClient:
         #        CIResult(name="build", passed=True, details="Build successful"),
         #        CIResult(name="type-check", passed=True, details="No type errors"),
         #    ]
-        raise NotImplementedError("TODO: Implement mock CI client")
+        if self._results is not None:
+            return self._results
+
+        return [
+            CIResult(name="unit-tests", passed=True, details="All 142 tests passed"),
+            CIResult(name="lint", passed=True, details="No issues found"),
+            CIResult(name="build", passed=True, details="Build successful"),
+            CIResult(name="type-check", passed=True, details="No type errors"),
+        ]

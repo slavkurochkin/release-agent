@@ -18,6 +18,8 @@ Design notes:
 
 from __future__ import annotations
 
+import json
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Protocol
 
@@ -97,34 +99,33 @@ class JSONIncidentLoader:
         #
         # Steps:
         # 1. Check if the file exists:
-        #    if not self._file_path.exists():
-        #        return []
-        #
+        if not self._file_path.exists():
+            return []
+
         # 2. Load the JSON file:
-        #    with open(self._file_path) as f:
-        #        incidents = json.load(f)
-        #
+        with open(self._file_path) as f:
+            incidents = json.load(f)
+
         # 3. Filter by repo (if the incident has a repo field):
-        #    relevant = [
-        #        inc for inc in incidents
-        #        if inc.get("repo", "") == repo or inc.get("repo", "") == ""
-        #    ]
-        #
+        relevant = [
+            inc for inc in incidents
+            if inc.get("repo", "") == repo or inc.get("repo", "") == ""
+        ]
+
         # 4. Filter by time window:
-        #    cutoff = datetime.utcnow() - timedelta(days=lookback_days)
-        #    recent = [
-        #        inc for inc in relevant
-        #        if datetime.fromisoformat(
-        #            inc["timestamp"].replace("Z", "+00:00")
-        #        ).replace(tzinfo=None) > cutoff
-        #    ]
-        #
+        cutoff = datetime.utcnow() - timedelta(days=lookback_days)
+        recent = [
+            inc for inc in relevant
+            if datetime.fromisoformat(
+                inc["timestamp"].replace("Z", "+00:00")
+            ).replace(tzinfo=None) > cutoff
+        ]
+
         # 5. Format as readable strings:
-        #    return [
-        #        f"[{inc['severity']}] {inc['title']}: {inc['description']}"
-        #        for inc in recent
-        #    ]
-        raise NotImplementedError("TODO: Implement JSON incident loader")
+        return [
+            f"[{inc['severity']}] {inc['title']}: {inc['description']}"
+            for inc in recent
+        ]
 
 
 # ---------------------------------------------------------------------------

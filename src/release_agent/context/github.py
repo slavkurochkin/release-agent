@@ -22,7 +22,7 @@ from typing import Protocol
 
 import httpx
 
-from release_agent.schemas import ReleaseInput
+from release_agent.schemas import FileChange, ReleaseInput
 
 # ---------------------------------------------------------------------------
 # Protocol (Interface)
@@ -87,7 +87,12 @@ class GitHubClient:
         # Hint: You'll create the httpx.AsyncClient in each method
         # (or use a context manager) to avoid connection lifecycle issues.
         self._token = token or os.environ.get("GITHUB_TOKEN", "")
-        self._headers: dict[str, str] = {}
+        self._headers: dict[str, str] = {
+            "Accept": "application/vnd.github.v3+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        if self._token:
+            self._headers["Authorization"] = f"Bearer {self._token}"
 
     async def get_pr_data(self, repo: str, pr_number: int) -> ReleaseInput:
         """Fetch all PR data and assemble it into a ReleaseInput.
@@ -158,7 +163,50 @@ class GitHubClient:
         #        files_changed=files_changed,
         #        commit_messages=commit_messages,
         #    )
-        raise NotImplementedError("TODO: Implement GitHub PR data fetch")
+
+         # 1. Create an httpx.AsyncClient:
+        async with httpx.AsyncClient(
+            base_url=self.BASE_URL,
+            headers=self._headers,
+            timeout=30.0,
+        ) as client:
+        # 2. Fetch PR metadata:
+            pr_resp = await client.get(f"/repos/{repo}/pulls/{pr_number}")
+            pr_resp.raise_for_status()
+            pr_data = pr_resp.json()
+
+        # 3. Fetch changed files (handle pagination for PRs with many files):
+            files_data = await self._handle_pagination(
+                client, f"/repos/{repo}/pulls/{pr_number}/files"
+            )
+
+        # 4. Fetch commits:
+            commits_data = await self._handle_pagination(
+                client, f"/repos/{repo}/pulls/{pr_number}/commits"
+            )
+
+        # 5. Transform into schema objects:
+            files_changed = [
+                FileChange(
+                    path=f["filename"],
+                    additions=f["additions"],
+                    deletions=f["deletions"],
+                    patch=f.get("patch", ""),
+                )
+                for f in files_data
+            ]
+            commit_messages = [c["commit"]["message"] for c in commits_data]
+
+        # 6. Build and return ReleaseInput:
+            return ReleaseInput(
+                repo=repo,
+                pr_number=pr_number,
+                title=pr_data["title"],
+                description=pr_data.get("body") or "",
+                author=pr_data["user"]["login"],
+                files_changed=files_changed,
+                commit_messages=commit_messages,
+            )
 
     async def _handle_pagination(
         self,
@@ -177,18 +225,26 @@ class GitHubClient:
         Returns:
             All items across all pages
         """
-        # TODO: Implement pagination handling.
-        #
-        # Steps:
-        # 1. Fetch the first page
-        # 2. Check for 'Link' header with rel="next"
-        # 3. If present, fetch the next page and append results
-        # 4. Repeat until no more pages
-        #
-        # Hint: The Link header format is:
-        #   <https://api.github.com/...?page=2>; rel="next",
-        #   <https://api.github.com/...?page=5>; rel="last"
-        raise NotImplementedError("TODO: Implement pagination")
+        all_items: list[dict] = []
+        next_url: str | None = url
+
+        while next_url:
+            resp = await client.get(next_url, params={"per_page": 100})
+            resp.raise_for_status()
+            all_items.extend(resp.json())
+            next_url = self._parse_next_link(resp.headers.get("link", ""))
+
+        return all_items
+
+    @staticmethod
+    def _parse_next_link(link_header: str) -> str | None:
+        """Extract the 'next' URL from a GitHub Link header."""
+        if not link_header:
+            return None
+        for part in link_header.split(","):
+            if 'rel="next"' in part:
+                return part.split(";")[0].strip().strip("<>")
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -228,10 +284,14 @@ class MockGitHubClient:
         Raises:
             KeyError: If no mock data exists for this repo/PR
         """
-        # TODO: Implement mock data lookup.
-        #
-        # Steps:
-        # 1. Look up the data in self._mock_data
-        # 2. If found, return ReleaseInput.model_validate(data)
-        # 3. If not found, return a default minimal ReleaseInput
-        raise NotImplementedError("TODO: Implement mock GitHub client")
+        if repo in self._mock_data and pr_number in self._mock_data[repo]:
+            data = self._mock_data[repo][pr_number]
+            return ReleaseInput.model_validate(data)
+
+        return ReleaseInput(
+            repo=repo,
+            pr_number=pr_number,
+            title="Mock PR",
+            author="mock-user",
+            commit_messages=["mock commit"],
+        )

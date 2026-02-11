@@ -1,0 +1,29 @@
+[
+    {
+        "id": "INC-001",
+        "title": "Database connection pool exhausted",
+        "severity": "P1",
+        "timestamp": "2026-02-09T14:30:00Z",
+        "repo": "myorg/backend-api",
+        "description": "Connection pool hit max limit during peak traffic",
+        "resolved": false
+    },
+    {
+        "id": "INC-002",
+        "title": "Elevated error rates on payments endpoint",
+        "severity": "P2",
+        "timestamp": "2026-02-08T09:15:00Z",
+        "repo": "myorg/backend-api",
+        "description": "5xx errors spiked to 2% on /api/payments",
+        "resolved": true
+    },
+    {
+        "id": "INC-003",
+        "title": "Stale cache causing incorrect user data",
+        "severity": "P3",
+        "timestamp": "2025-12-01T11:00:00Z",
+        "repo": "myorg/backend-api",
+        "description": "Redis cache TTL misconfigured, serving stale profiles",
+        "resolved": true
+    }
+]
