@@ -47,6 +47,7 @@ def base_input() -> ReleaseInput:
         pr_number=1,
         title="Test PR",
         author="tester",
+        commit_messages=["fix: test change"],
     )
 
 
