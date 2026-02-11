@@ -1,7 +1,9 @@
-from fastapi.testclient import TestClient
 from unittest.mock import AsyncMock, patch
+
+from fastapi.testclient import TestClient
+
 from release_agent.main import app
-from release_agent.schemas import Decision, ReleaseOutput, RiskFactor, RiskLevel
+from release_agent.schemas import Decision, ReleaseOutput, RiskLevel
 
 client = TestClient(app)
 

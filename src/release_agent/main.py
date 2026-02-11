@@ -19,19 +19,20 @@ Then visit http://localhost:8000/docs for the interactive API docs.
 
 from __future__ import annotations
 
+import asyncio
+import time
+from collections import defaultdict
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-
-from release_agent.schemas import ReleaseInput, ReleaseOutput
-from release_agent.agent import ReleaseRiskAgent
-import time
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from collections import defaultdict
 
+from release_agent.agent import ReleaseRiskAgent
+from release_agent.prompts.assess_risk import build_system_prompt, build_user_prompt
+from release_agent.schemas import ReleaseInput, ReleaseOutput
 
 # ---------------------------------------------------------------------------
 # Application Lifespan (startup/shutdown)
@@ -126,67 +127,35 @@ class RateLimiter:
             return False
         self.requests[client_ip].append(now)
         return True
-    
+
 class TimingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         start = time.time()
         response = await call_next(request)
         duration = time.time() - start
         response.headers["X-Process-Time"] = f"{duration:.2f}s"
-        return response    
+        return response
 
 # ---------------------------------------------------------------------------
 # Error Handling
 # ---------------------------------------------------------------------------
 @app.exception_handler(ValueError)
 async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
+    """Handle ValueError exceptions (e.g., invalid LLM output)."""
     return JSONResponse(
         status_code=422,
         content={"error": "validation_error", "detail": str(exc)},
     )
 
 
-@app.exception_handler(ValueError)
-async def value_error_handler(request: Request, exc: ValueError) -> JSONResponse:
-    """Handle ValueError exceptions (e.g., invalid LLM output).
-
-    Returns a 422 Unprocessable Entity with error details.
-    """
-    # TODO: Return a proper JSON error response.
-    #
-    # return JSONResponse(
-    #     status_code=422,
-    #     content={"error": "validation_error", "detail": str(exc)},
-    # )
-    return JSONResponse(
-        status_code=500,
-        content={"error": "internal_error", "detail": "Not implemented"},
-    )
-
-
 @app.exception_handler(Exception)
 async def general_error_handler(request: Request, exc: Exception) -> JSONResponse:
-    """Catch-all error handler for unexpected exceptions.
-
-    In development, includes error details. In production (Phase 7),
-    you'll want to log the full traceback but return a generic message.
-    """
-    # TODO: Implement proper error handling.
-    #
-    # return JSONResponse(
-    #     status_code=500,
-    #     content={
-    #         "error": "internal_error",
-    #         "detail": str(exc),  # Remove in production
-    #     },
-    # )
-    @app.exception_handler(Exception)
-    async def general_error_handler(request: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": "internal_error",
-                "detail": str(exc),
+    """Catch-all error handler for unexpected exceptions."""
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "internal_error",
+            "detail": str(exc),
         },
     )
 
@@ -252,9 +221,9 @@ async def assess_release(release: ReleaseInput, request: Request) -> ReleaseOutp
     try:
         result = await agent.assess(release)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Assessment failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Assessment failed: {e}") from e
     return result
 
 @app.post("/assess/batch", response_model=list[ReleaseOutput])
@@ -271,17 +240,16 @@ async def assess_batch(
     agent: ReleaseRiskAgent = request.app.state.agent
 
     # Run all assessments concurrently
-    import asyncio
     tasks = [agent.assess(release) for release in releases]
 
     try:
         results = await asyncio.gather(*tasks)
     except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+        raise HTTPException(status_code=422, detail=str(e)) from e
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Batch assessment failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Batch assessment failed: {e}") from e
 
-    return list(results) 
+    return list(results)
 
 @app.post("/assess/dry-run")
 async def dry_run(release: ReleaseInput) -> dict:
@@ -293,4 +261,4 @@ async def dry_run(release: ReleaseInput) -> dict:
         "user_prompt_length": len(user_prompt),
         "system_prompt_preview": system_prompt[:500],
         "user_prompt_preview": user_prompt[:500],
-    }   
+    }
