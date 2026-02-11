@@ -1,0 +1,44 @@
+# Policy Engine Configuration
+# Customize rule behavior without modifying Python code.
+# Each key under "rules" matches a rule function name.
+
+rules:
+  rule_ci_failures:
+    enabled: true
+
+  rule_high_risk_threshold:
+    enabled: true
+    threshold: 0.7
+
+  rule_database_migration:
+    enabled: true
+    risk_adjustment: 0.15
+    patterns:
+      - migration
+      - alembic
+      - flyway
+      - liquibase
+
+  rule_auth_changes:
+    enabled: true
+    risk_adjustment: 0.1
+    patterns:
+      - auth
+      - login
+      - session
+      - token
+      - oauth
+      - permission
+      - rbac
+      - acl
+
+  rule_deploy_during_incident:
+    enabled: true
+
+  rule_large_pr:
+    enabled: true
+    threshold: 500
+    risk_adjustment: 0.1
+
+  rule_no_tests:
+    enabled: true
