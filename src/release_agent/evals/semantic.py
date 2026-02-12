@@ -20,6 +20,8 @@ Uses OpenAI's text-embedding-3-small model for embeddings.
 
 from __future__ import annotations
 
+import numpy as np
+
 from release_agent.evals.runner import EvalResult
 from release_agent.llm import LLMClient
 from release_agent.schemas import ReleaseOutput
@@ -44,25 +46,21 @@ def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     Returns:
         Cosine similarity score between -1.0 and 1.0
     """
-    # TODO: Implement cosine similarity.
-    #
-    # Steps:
     # 1. Convert to numpy arrays:
-    #    a = np.array(vec_a)
-    #    b = np.array(vec_b)
-    #
+    a = np.array(vec_a)
+    b = np.array(vec_b)
+
     # 2. Compute cosine similarity:
-    #    dot_product = np.dot(a, b)
-    #    norm_a = np.linalg.norm(a)
-    #    norm_b = np.linalg.norm(b)
-    #
+    dot_product = np.dot(a, b)
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+
     # 3. Handle edge case (zero vectors):
-    #    if norm_a == 0 or norm_b == 0:
-    #        return 0.0
-    #
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+
     # 4. Return the similarity:
-    #    return float(dot_product / (norm_a * norm_b))
-    raise NotImplementedError("TODO: Implement cosine similarity")
+    return float(dot_product / (norm_a * norm_b))
 
 
 # ---------------------------------------------------------------------------
@@ -89,26 +87,22 @@ async def run_semantic_evals(
     Returns:
         List of EvalResult objects
     """
-    # TODO: Implement semantic evaluations.
-    #
-    # Steps:
     # 1. Create LLM client if not provided:
-    #    client = llm_client or LLMClient()
+    client = llm_client or LLMClient()
     #
     # 2. Run individual semantic checks:
-    #    results = []
-    #    results.append(
-    #        await check_explanation_similarity(
-    #            actual, expected, example_id, client, similarity_threshold
-    #        )
-    #    )
-    #    results.append(
-    #        await check_summary_similarity(
-    #            actual, expected, example_id, client, similarity_threshold
-    #        )
-    #    )
-    #    return results
-    raise NotImplementedError("TODO: Implement semantic evals")
+    results = []
+    results.append(
+        await check_explanation_similarity(
+            actual, expected, example_id, client, similarity_threshold
+        )
+    )
+    results.append(
+        await check_summary_similarity(
+            actual, expected, example_id, client, similarity_threshold
+        )
+    )
+    return results
 
 
 async def check_explanation_similarity(
@@ -130,26 +124,23 @@ async def check_explanation_similarity(
     Returns:
         EvalResult with similarity score
     """
-    # TODO: Implement explanation similarity check.
-    #
-    # Steps:
+
     # 1. Get embeddings for both explanations:
-    #    actual_emb = await client.get_embedding(actual.explanation)
-    #    expected_emb = await client.get_embedding(expected.explanation)
-    #
+    actual_emb = await client.get_embedding(actual.explanation)
+    expected_emb = await client.get_embedding(expected.explanation)
+
     # 2. Compute cosine similarity:
-    #    similarity = cosine_similarity(actual_emb, expected_emb)
+    similarity = cosine_similarity(actual_emb, expected_emb)
     #
     # 3. Return EvalResult:
-    #    return EvalResult(
-    #        eval_type="semantic",
-    #        eval_name="explanation_similarity",
-    #        passed=similarity >= threshold,
-    #        score=similarity,
-    #        details=f"Cosine similarity: {similarity:.3f} (threshold: {threshold})",
-    #        example_id=example_id,
-    #    )
-    raise NotImplementedError("TODO: Implement explanation similarity check")
+    return EvalResult(
+        eval_type="semantic",
+        eval_name="explanation_similarity",
+        passed=similarity >= threshold,
+        score=similarity,
+        details=f"Cosine similarity: {similarity:.3f} (threshold: {threshold})",
+        example_id=example_id,
+    )
 
 
 async def check_summary_similarity(
@@ -174,7 +165,16 @@ async def check_summary_similarity(
     Returns:
         EvalResult with similarity score
     """
-    # TODO: Implement summary similarity check.
-    #
-    # Same approach as check_explanation_similarity but for the summary field.
-    raise NotImplementedError("TODO: Implement summary similarity check")
+    actual_emb = await client.get_embedding(actual.summary)
+    expected_emb = await client.get_embedding(expected.summary)
+
+    similarity = cosine_similarity(actual_emb, expected_emb)
+
+    return EvalResult(
+        eval_type="semantic",
+        eval_name="summary_similarity",
+        passed=similarity >= threshold,
+        score=similarity,
+        details=f"Cosine similarity: {similarity:.3f} (threshold: {threshold})",
+        example_id=example_id,
+    )

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 from release_agent.agent import ReleaseRiskAgent
 from release_agent.evals.runner import EvalResult
+from release_agent.schemas import Decision, ReleaseInput, RiskLevel
 
 # ---------------------------------------------------------------------------
 # Adversarial Test Cases
@@ -167,6 +168,57 @@ def get_adversarial_cases() -> list[dict]:
             },
             "check": "should_not_crash",
         },
+        {
+            "name": "massive_release",
+            "description": "Extremely large PR with 200+ files changed",
+            "input": {
+                "repo": "myorg/api",
+                "pr_number": 200,
+                "title": "Quarterly dependency update",
+                "description": "Updates all dependencies to latest versions.",
+                "author": "bot",
+                "files_changed": [
+                    {
+                        "path": f"src/module_{i}/deps.txt",
+                        "additions": 5,
+                        "deletions": 5,
+                        "patch": "",
+                    }
+                    for i in range(200)
+                ],
+                "ci_results": [
+                    {"name": "unit-tests", "passed": True, "details": "All tests passed"},
+                ],
+                "commit_messages": ["Update all dependencies"],
+            },
+            "check": "should_not_be_low_risk",
+        },
+        {
+            "name": "contradictory_commits",
+            "description": "Commit messages contradict each other with security concerns",
+            "input": {
+                "repo": "myorg/api",
+                "pr_number": 201,
+                "title": "Update user service",
+                "description": "Routine update to user service.",
+                "author": "dev4",
+                "files_changed": [
+                    {"path": "src/users/service.py", "additions": 40, "deletions": 30, "patch": ""},
+                    {"path": "src/users/auth.py", "additions": 20, "deletions": 15, "patch": ""},
+                ],
+                "commit_messages": [
+                    "add admin bypass for authentication",
+                    "remove all rate limiting",
+                    "disable audit logging temporarily",
+                    "fix: re-enable audit logging",
+                    "revert rate limiting changes",
+                ],
+                "ci_results": [
+                    {"name": "unit-tests", "passed": True, "details": "All tests passed"},
+                ],
+            },
+            "check": "should_not_be_low_risk",
+        },
     ]
 
 
@@ -192,46 +244,89 @@ async def run_adversarial_evals(
     Returns:
         List of EvalResult objects
     """
-    # TODO: Implement adversarial eval runner.
-    #
-    # Steps:
-    # 1. Get adversarial test cases:
-    #    cases = get_adversarial_cases()
-    #
-    # 2. Run each case:
-    #    results = []
-    #    for case in cases:
-    #        input_data = ReleaseInput.model_validate(case["input"])
-    #
-    #        try:
-    #            output = await agent.assess(input_data)
-    #        except Exception as e:
-    #            # "should_not_crash" cases should catch this
-    #            if case["check"] == "should_not_crash":
-    #                results.append(EvalResult(
-    #                    eval_type="adversarial",
-    #                    eval_name=case["name"],
-    #                    passed=False,
-    #                    details=f"Agent crashed: {e}",
-    #                    example_id=case["name"],
-    #                ))
-    #            continue
-    #
-    # 3. Apply the check:
-    #        if case["check"] == "should_be_nogo":
-    #            passed = output.decision == Decision.NO_GO
-    #        elif case["check"] == "should_not_be_low_risk":
-    #            passed = output.risk_level != RiskLevel.LOW
-    #        elif case["check"] == "should_not_crash":
-    #            passed = True  # If we got here, it didn't crash
-    #
-    #        results.append(EvalResult(
-    #            eval_type="adversarial",
-    #            eval_name=case["name"],
-    #            passed=passed,
-    #            details=f"Check: {case['check']}, Decision: {output.decision}",
-    #            example_id=case["name"],
-    #        ))
-    #
-    # 4. Return results
-    raise NotImplementedError("TODO: Implement adversarial eval runner")
+    cases = get_adversarial_cases()
+    results = []
+
+    for case in cases:
+        check = case["check"]
+
+        # Validate input — some adversarial cases may have invalid input on purpose
+        try:
+            input_data = ReleaseInput.model_validate(case["input"])
+        except Exception as exc:
+            if check == "should_not_crash":
+                # Validation rejection counts as graceful handling
+                results.append(
+                    EvalResult(
+                        eval_type="adversarial",
+                        eval_name=case["name"],
+                        passed=True,
+                        score=1.0,
+                        details=f"Input rejected gracefully: {exc}",
+                        example_id=case["name"],
+                    )
+                )
+            else:
+                results.append(
+                    EvalResult(
+                        eval_type="adversarial",
+                        eval_name=case["name"],
+                        passed=False,
+                        score=0.0,
+                        details=f"Input validation failed unexpectedly: {exc}",
+                        example_id=case["name"],
+                    )
+                )
+            continue
+
+        # Run the agent
+        try:
+            output = await agent.assess(input_data)
+        except Exception as exc:
+            if check == "should_not_crash":
+                results.append(
+                    EvalResult(
+                        eval_type="adversarial",
+                        eval_name=case["name"],
+                        passed=False,
+                        score=0.0,
+                        details=f"Agent crashed: {exc}",
+                        example_id=case["name"],
+                    )
+                )
+            else:
+                results.append(
+                    EvalResult(
+                        eval_type="adversarial",
+                        eval_name=case["name"],
+                        passed=False,
+                        score=0.0,
+                        details=f"Agent raised unexpected error: {exc}",
+                        example_id=case["name"],
+                    )
+                )
+            continue
+
+        # Apply the behavioural check
+        if check == "should_be_nogo":
+            passed = output.decision == Decision.NO_GO
+        elif check == "should_not_be_low_risk":
+            passed = output.risk_level != RiskLevel.LOW
+        elif check == "should_not_crash":
+            passed = True  # If we got here, it didn't crash
+        else:
+            passed = False
+
+        results.append(
+            EvalResult(
+                eval_type="adversarial",
+                eval_name=case["name"],
+                passed=passed,
+                score=1.0 if passed else 0.0,
+                details=f"Check: {check}, Decision: {output.decision}, "
+                f"Risk: {output.risk_level}",
+                example_id=case["name"],
+            )
+        )
+
+    return results
