@@ -21,8 +21,10 @@ risk assessments on multiple dimensions.
 
 from __future__ import annotations
 
+import json
+
 from release_agent.evals.runner import EvalResult
-from release_agent.llm import LLMClient
+from release_agent.llm import LLMClient, LLMConfig
 from release_agent.schemas import ReleaseInput, ReleaseOutput
 
 # ---------------------------------------------------------------------------
@@ -67,12 +69,20 @@ Your job is to grade the agent's output on these dimensions:
 4: Specific, actionable recommendations covering main risks
 5: Comprehensive action plan with specific steps, monitoring, and rollback guidance
 
+### Hallucination Detection (1-5)
+1: Multiple references to files, CI checks, or incidents that don't exist in the input
+2: One clear hallucination (fabricated file or check)
+3: No hallucinations but some vague claims that can't be verified from the input
+4: All claims can be traced to specific input data
+5: Every claim is traceable and the output explicitly avoids mentioning things not in the input
+
 Respond with a JSON object:
 {
     "reasoning_quality": <1-5>,
     "specificity": <1-5>,
     "decision_accuracy": <1-5>,
     "actionability": <1-5>,
+    "hallucination_detection": <1-5>,
     "overall_score": <1-5>,
     "explanation": "<why you gave these scores>"
 }
@@ -114,43 +124,69 @@ async def run_judge_eval(
     Returns:
         List of EvalResult objects, one per grading dimension
     """
-    # TODO: Implement LLM-as-judge evaluation.
-    #
-    # Steps:
+
     # 1. Create a judge LLM client (use a different model or same model):
-    #    judge_config = LLMConfig(
-    #        model="gpt-4o",
-    #        temperature=0.0,  # Deterministic for consistency
-    #        max_tokens=1024,
-    #    )
-    #    client = llm_client or LLMClient(config=judge_config)
-    #
+    judge_config = LLMConfig(
+        model="gpt-4o",
+        temperature=0.0,  # Deterministic for consistency
+        max_tokens=1024,
+    )
+    client = llm_client or LLMClient(config=judge_config)
+
     # 2. Build the judge prompt:
-    #    user_prompt = JUDGE_USER_TEMPLATE.format(
-    #        input_data=input_data.model_dump_json(indent=2),
-    #        agent_output=actual.model_dump_json(indent=2),
-    #        expected_output=expected.model_dump_json(indent=2),
-    #    )
-    #
-    # 3. Call the judge (using raw chat completion, not assess_risk):
-    #    Note: You'll need a generic "chat" method on LLMClient,
-    #    or call the OpenAI API directly here.
-    #
+    user_prompt = JUDGE_USER_TEMPLATE.format(
+        input_data=input_data.model_dump_json(indent=2),
+        agent_output=actual.model_dump_json(indent=2),
+        expected_output=expected.model_dump_json(indent=2),
+    )
+
+    # 3. Call the judge via the underlying OpenAI client:
+    response = await client._client.chat.completions.create(
+        model=client.config.model,
+        messages=[
+            {"role": "system", "content": JUDGE_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=client.config.temperature,
+        max_tokens=client.config.max_tokens,
+        response_format={"type": "json_object"},
+    )
+
     # 4. Parse the judge's JSON response:
-    #    scores = json.loads(judge_response)
-    #
+    content = response.choices[0].message.content
+    try:
+        scores = json.loads(content)
+    except json.JSONDecodeError as exc:
+        return [
+            EvalResult(
+                eval_type="judge",
+                eval_name="judge_parse_error",
+                passed=False,
+                score=0.0,
+                details=f"Judge returned invalid JSON: {exc}",
+                example_id=example_id,
+            )
+        ]
+
     # 5. Convert to EvalResults:
-    #    results = []
-    #    for dimension in ["reasoning_quality", "specificity",
-    #                       "decision_accuracy", "actionability"]:
-    #        score = scores[dimension]
-    #        results.append(EvalResult(
-    #            eval_type="judge",
-    #            eval_name=f"judge_{dimension}",
-    #            passed=score >= 3,  # 3/5 is the passing threshold
-    #            score=score / 5.0,  # Normalize to 0-1
-    #            details=scores.get("explanation", ""),
-    #            example_id=example_id,
-    #        ))
-    #    return results
-    raise NotImplementedError("TODO: Implement LLM-as-judge evaluation")
+    explanation = scores.get("explanation", "")
+    results = []
+    for dimension in [
+        "reasoning_quality",
+        "specificity",
+        "decision_accuracy",
+        "actionability",
+        "hallucination_detection",
+    ]:
+        score = scores.get(dimension, 0)
+        results.append(
+            EvalResult(
+                eval_type="judge",
+                eval_name=f"judge_{dimension}",
+                passed=score >= 3,  # 3/5 is the passing threshold
+                score=score / 5.0,  # Normalize to 0-1
+                details=explanation,
+                example_id=example_id,
+            )
+        )
+    return results

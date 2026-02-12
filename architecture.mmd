@@ -1,0 +1,141 @@
+graph TB
+    subgraph API["API Layer (FastAPI)"]
+        MAIN["main.py<br/>FastAPI Server"]
+        HEALTH["GET /health"]
+        ASSESS["POST /assess"]
+        BATCH["POST /assess/batch"]
+        DRYRUN["POST /assess/dry-run"]
+        MW_CORS["CORSMiddleware"]
+        MW_LOG["LoggingMiddleware"]
+        MW_TIME["TimingMiddleware"]
+        MAIN --> HEALTH
+        MAIN --> ASSESS
+        MAIN --> BATCH
+        MAIN --> DRYRUN
+        MAIN --> MW_CORS
+        MAIN --> MW_LOG
+        MAIN --> MW_TIME
+    end
+
+    subgraph Core["Core Agent"]
+        AGENT["agent.py<br/>ReleaseRiskAgent"]
+        AGENT_ASSESS["assess(ReleaseInput)"]
+        AGENT --> AGENT_ASSESS
+    end
+
+    subgraph Prompts["Prompt Engineering"]
+        PROMPT["prompts/assess_risk.py"]
+        SYS_PROMPT["build_system_prompt()"]
+        USR_PROMPT["build_user_prompt()"]
+        PROMPT --> SYS_PROMPT
+        PROMPT --> USR_PROMPT
+    end
+
+    subgraph LLM["LLM Client"]
+        LLM_CLIENT["llm.py<br/>LLMClient"]
+        LLM_CONFIG["LLMConfig"]
+        LLM_ASSESS["assess_risk()"]
+        LLM_CLIENT --> LLM_CONFIG
+        LLM_CLIENT --> LLM_ASSESS
+    end
+
+    subgraph Policy["Policy Engine"]
+        POLICY["policy.py"]
+        APPLY["apply_policies()"]
+        CONFIG_LOAD["load_policy_config()"]
+        YAML["policy_config.yaml"]
+
+        subgraph Rules["Deterministic Rules"]
+            R_CI["rule_ci_failures<br/>→ FORCE_NO_GO"]
+            R_RISK["rule_high_risk_threshold<br/>→ FORCE_NO_GO"]
+            R_DB["rule_database_migration<br/>→ ADJUST_RISK"]
+            R_AUTH["rule_auth_changes<br/>→ ADJUST_RISK"]
+            R_INC["rule_deploy_during_incident<br/>→ ADD_WARNING"]
+            R_PR["rule_large_pr<br/>→ ADJUST_RISK"]
+            R_TEST["rule_no_tests<br/>→ ADD_WARNING"]
+        end
+
+        POLICY --> APPLY
+        POLICY --> CONFIG_LOAD
+        CONFIG_LOAD --> YAML
+        APPLY --> Rules
+    end
+
+    subgraph Context["Context Modules"]
+        GH["context/github.py<br/>GitHubClient"]
+        CI["context/ci.py<br/>GitHubActionsCIClient"]
+        INC["context/incidents.py<br/>JSONIncidentLoader"]
+    end
+
+    subgraph Schemas["Data Models (schemas.py)"]
+        INPUT["ReleaseInput"]
+        OUTPUT["ReleaseOutput"]
+        MODELS["FileChange | CIResult<br/>RiskFactor | RiskLevel<br/>Decision"]
+    end
+
+    subgraph Evals["Evaluation Framework"]
+        RUNNER["evals/runner.py<br/>EvalReport"]
+        FUNC["evals/functional.py<br/>Schema & Decision checks"]
+        SEM["evals/semantic.py<br/>Embedding similarity"]
+        JUDGE["evals/judge.py<br/>LLM-as-Judge"]
+        ADV["evals/adversarial.py<br/>Robustness tests"]
+        RUNNER --> FUNC
+        RUNNER --> SEM
+        RUNNER --> JUDGE
+        RUNNER --> ADV
+    end
+
+    subgraph Infra["Infrastructure"]
+        LOG["logging_config.py<br/>structlog"]
+        DOCKER["Dockerfile"]
+        GCP["GCP Cloud Run"]
+        BQ["BigQuery"]
+    end
+
+    %% Main data flow
+    ASSESS --> AGENT
+    BATCH --> AGENT
+    AGENT_ASSESS --> SYS_PROMPT
+    AGENT_ASSESS --> USR_PROMPT
+    AGENT_ASSESS --> LLM_ASSESS
+    AGENT_ASSESS --> APPLY
+
+    %% Context feeds into input
+    GH --> INPUT
+    CI --> INPUT
+    INC --> INPUT
+
+    %% Schema dependencies
+    INPUT --> AGENT_ASSESS
+    LLM_ASSESS --> OUTPUT
+    APPLY --> OUTPUT
+
+    %% Evals depend on agent + schemas
+    RUNNER --> AGENT
+    FUNC --> OUTPUT
+    SEM --> LLM_CLIENT
+    JUDGE --> LLM_CLIENT
+
+    %% External services
+    LLM_ASSESS -.->|OpenAI API| OPENAI((OpenAI GPT-4))
+    GH -.->|REST API| GITHUB((GitHub API))
+    CI -.->|REST API| GITHUB
+
+    %% Styling
+    classDef api fill:#4a9eff,stroke:#2670c4,color:#fff
+    classDef core fill:#ff6b6b,stroke:#c0392b,color:#fff
+    classDef policy fill:#ffd93d,stroke:#c4a000,color:#333
+    classDef context fill:#6bcb77,stroke:#2d8e3e,color:#fff
+    classDef schema fill:#a78bfa,stroke:#7c3aed,color:#fff
+    classDef eval fill:#ff9f43,stroke:#c0701e,color:#fff
+    classDef external fill:#95a5a6,stroke:#7f8c8d,color:#fff
+
+    class MAIN,HEALTH,ASSESS,BATCH,DRYRUN,MW_CORS,MW_LOG,MW_TIME api
+    class AGENT,AGENT_ASSESS core
+    class PROMPT,SYS_PROMPT,USR_PROMPT core
+    class LLM_CLIENT,LLM_CONFIG,LLM_ASSESS core
+    class POLICY,APPLY,CONFIG_LOAD,YAML,R_CI,R_RISK,R_DB,R_AUTH,R_INC,R_PR,R_TEST policy
+    class GH,CI,INC context
+    class INPUT,OUTPUT,MODELS schema
+    class RUNNER,FUNC,SEM,JUDGE,ADV eval
+    class OPENAI,GITHUB external

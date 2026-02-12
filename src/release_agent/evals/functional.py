@@ -15,7 +15,7 @@ Think of these as "unit tests for agent output."
 from __future__ import annotations
 
 from release_agent.evals.runner import EvalResult
-from release_agent.schemas import ReleaseOutput
+from release_agent.schemas import Decision, ReleaseOutput, RiskLevel
 
 
 def run_functional_evals(
@@ -33,16 +33,14 @@ def run_functional_evals(
     Returns:
         List of EvalResult objects, one per check
     """
-    # TODO: Implement by calling each functional eval and collecting results.
-    #
-    # results = []
-    # results.append(check_schema_compliance(actual, example_id))
-    # results.append(check_decision_match(actual, expected, example_id))
-    # results.append(check_risk_score_range(actual, example_id))
-    # results.append(check_risk_level_consistency(actual, example_id))
-    # results.append(check_explanation_present(actual, example_id))
-    # return results
-    raise NotImplementedError("TODO: Implement functional eval runner")
+
+    results = []
+    results.append(check_schema_compliance(actual, example_id))
+    results.append(check_decision_match(actual, expected, example_id))
+    results.append(check_risk_score_range(actual, example_id))
+    results.append(check_risk_level_consistency(actual, example_id))
+    results.append(check_explanation_present(actual, example_id))
+    return results
 
 
 def check_schema_compliance(actual: ReleaseOutput, example_id: str) -> EvalResult:
@@ -52,22 +50,31 @@ def check_schema_compliance(actual: ReleaseOutput, example_id: str) -> EvalResul
     passed basic validation. This check verifies semantic constraints
     beyond what Pydantic checks (e.g., explanation length, non-empty factors).
     """
-    # TODO: Implement schema compliance check.
-    #
-    # Things to verify:
-    # 1. summary is at least 10 characters
-    # 2. explanation is at least 20 characters
-    # 3. risk_factors is not empty
-    # 4. If decision is NO_GO, recommended_actions should not be empty
-    #
-    # Return EvalResult(
-    #     eval_type="functional",
-    #     eval_name="schema_compliance",
-    #     passed=all_checks_pass,
-    #     details="...",
-    #     example_id=example_id,
-    # )
-    raise NotImplementedError("TODO: Implement schema compliance check")
+    failures: list[str] = []
+
+    if len(actual.summary) < 10:
+        failures.append(f"summary too short ({len(actual.summary)} chars, need >= 10)")
+
+    if len(actual.explanation) < 20:
+        failures.append(f"explanation too short ({len(actual.explanation)} chars, need >= 20)")
+
+    if not actual.risk_factors:
+        failures.append("risk_factors is empty")
+
+    if actual.decision == Decision.NO_GO and not actual.recommended_actions:
+        failures.append("NO_GO decision but recommended_actions is empty")
+
+    passed = len(failures) == 0
+    details = "All schema checks passed" if passed else "; ".join(failures)
+
+    return EvalResult(
+        eval_type="functional",
+        eval_name="schema_compliance",
+        passed=passed,
+        score=1.0 if passed else 0.0,
+        details=details,
+        example_id=example_id,
+    )
 
 
 def check_decision_match(
@@ -78,11 +85,23 @@ def check_decision_match(
     This is the most important functional eval. A wrong decision means
     either a dangerous release was approved or a safe release was blocked.
     """
-    # TODO: Implement decision match check.
-    #
-    # passed = actual.decision == expected.decision
-    # Return EvalResult with pass/fail and details about the mismatch
-    raise NotImplementedError("TODO: Implement decision match check")
+    passed = actual.decision == expected.decision
+
+    if passed:
+        details = f"Decision matches: {actual.decision}"
+    else:
+        details = (
+            f"Decision mismatch: got {actual.decision}, expected {expected.decision}"
+        )
+
+    return EvalResult(
+        eval_type="functional",
+        eval_name="decision_match",
+        passed=passed,
+        score=1.0 if passed else 0.0,
+        details=details,
+        example_id=example_id,
+    )
 
 
 def check_risk_score_range(actual: ReleaseOutput, example_id: str) -> EvalResult:
@@ -91,10 +110,21 @@ def check_risk_score_range(actual: ReleaseOutput, example_id: str) -> EvalResult
     Pydantic enforces this via Field(ge=0.0, le=1.0), but this eval
     serves as documentation and catches edge cases.
     """
-    # TODO: Implement risk score range check.
-    #
-    # passed = 0.0 <= actual.risk_score <= 1.0
-    raise NotImplementedError("TODO: Implement risk score range check")
+    passed = 0.0 <= actual.risk_score <= 1.0
+
+    if passed:
+        details = f"risk_score {actual.risk_score} is within [0.0, 1.0]"
+    else:
+        details = f"risk_score {actual.risk_score} is out of range [0.0, 1.0]"
+
+    return EvalResult(
+        eval_type="functional",
+        eval_name="risk_score_range",
+        passed=passed,
+        score=1.0 if passed else 0.0,
+        details=details,
+        example_id=example_id,
+    )
 
 
 def check_risk_level_consistency(actual: ReleaseOutput, example_id: str) -> EvalResult:
@@ -108,13 +138,38 @@ def check_risk_level_consistency(actual: ReleaseOutput, example_id: str) -> Eval
 
     We allow some flexibility (±0.05) since the boundaries aren't strict.
     """
-    # TODO: Implement risk level consistency check.
-    #
-    # Steps:
-    # 1. Determine expected risk_level from risk_score
-    # 2. Check if actual.risk_level matches (with tolerance)
-    # 3. Return EvalResult
-    raise NotImplementedError("TODO: Implement risk level consistency check")
+    tolerance = 0.05
+    score = actual.risk_score
+
+    # Determine which risk levels are acceptable at this score (with tolerance)
+    acceptable: set[RiskLevel] = set()
+    if score <= 0.3 + tolerance:
+        acceptable.add(RiskLevel.LOW)
+    if 0.3 - tolerance <= score <= 0.5 + tolerance:
+        acceptable.add(RiskLevel.MEDIUM)
+    if 0.5 - tolerance <= score <= 0.7 + tolerance:
+        acceptable.add(RiskLevel.HIGH)
+    if score >= 0.7 - tolerance:
+        acceptable.add(RiskLevel.CRITICAL)
+
+    passed = actual.risk_level in acceptable
+
+    if passed:
+        details = f"risk_level {actual.risk_level} is consistent with risk_score {score}"
+    else:
+        details = (
+            f"risk_level {actual.risk_level} is inconsistent with risk_score {score} "
+            f"(expected one of: {', '.join(sorted(acceptable))})"
+        )
+
+    return EvalResult(
+        eval_type="functional",
+        eval_name="risk_level_consistency",
+        passed=passed,
+        score=1.0 if passed else 0.0,
+        details=details,
+        example_id=example_id,
+    )
 
 
 def check_explanation_present(actual: ReleaseOutput, example_id: str) -> EvalResult:
@@ -125,10 +180,34 @@ def check_explanation_present(actual: ReleaseOutput, example_id: str) -> EvalRes
     - Reference specific aspects of the release
     - Not be generic boilerplate
     """
-    # TODO: Implement explanation quality check.
-    #
-    # Basic checks:
-    # 1. len(actual.explanation) >= 50
-    # 2. Not all the same word repeated
-    # 3. Contains at least some specific details (numbers, file paths, etc.)
-    raise NotImplementedError("TODO: Implement explanation check")
+    failures: list[str] = []
+
+    if len(actual.explanation) < 50:
+        failures.append(
+            f"explanation too short ({len(actual.explanation)} chars, need >= 50)"
+        )
+
+    words = actual.explanation.split()
+    unique_words = set(w.lower() for w in words)
+    if len(words) >= 5 and len(unique_words) <= 2:
+        failures.append("explanation appears to be repeated filler text")
+
+    has_specifics = any(c.isdigit() for c in actual.explanation) or any(
+        marker in actual.explanation for marker in ["/", ".", "_", "#"]
+    )
+    if not has_specifics:
+        failures.append(
+            "explanation lacks specific details (no numbers, file paths, or references)"
+        )
+
+    passed = len(failures) == 0
+    details = "Explanation is substantive" if passed else "; ".join(failures)
+
+    return EvalResult(
+        eval_type="functional",
+        eval_name="explanation_present",
+        passed=passed,
+        score=1.0 if passed else 0.0,
+        details=details,
+        example_id=example_id,
+    )
