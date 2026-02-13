@@ -11,13 +11,15 @@
 # - Smaller image = faster deploys, less attack surface
 # - Final image is ~150MB instead of ~800MB
 #
-# Usage:
+# Usage (local):
 #   docker build -t release-agent .
-#   docker run -p 8000:8000 -e OPENAI_API_KEY=sk-... release-agent
+#   docker run -p 8080:8080 -e OPENAI_API_KEY=sk-... release-agent
 #
-# For Cloud Run:
-#   gcloud builds submit --tag gcr.io/PROJECT_ID/release-agent
-#   gcloud run deploy release-agent --image gcr.io/PROJECT_ID/release-agent
+# For Cloud Run (Apple Silicon Macs must cross-compile):
+#   docker build --platform linux/amd64 -t release-agent .
+#   docker tag release-agent $REGION-docker.pkg.dev/$PROJECT_ID/release-agent/release-agent:v1
+#   docker push $REGION-docker.pkg.dev/$PROJECT_ID/release-agent/release-agent:v1
+#   gcloud run deploy release-agent --image=$IMAGE:v1 --region=$REGION
 # =============================================================================
 
 # ---------------------------------------------------------------------------
@@ -25,9 +27,6 @@
 # ---------------------------------------------------------------------------
 FROM python:3.12-slim AS builder
 
-# TODO: Set up the build environment.
-#
-# Steps:
 # 1. Set working directory:
 WORKDIR /app
 
@@ -38,7 +37,7 @@ WORKDIR /app
 
 # 3. Copy dependency files first (for Docker layer caching):
 #    When dependencies don't change, Docker reuses this layer.
-COPY pyproject.toml ./
+COPY pyproject.toml README.md ./
 
 # 4. Install dependencies into a virtual environment:
 #    Using a venv makes it easy to copy just the installed packages
@@ -46,16 +45,12 @@ COPY pyproject.toml ./
 RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# TODO: Install the project dependencies.
-# RUN pip install --no-cache-dir .
-# For now, just install dependencies without the package itself:
-RUN pip install --no-cache-dir pip --upgrade && \
-    pip install --no-cache-dir .
+RUN pip install --no-cache-dir pip --upgrade
 
-# 5. Copy the rest of the source code:
+# 5. Copy source code (needed for hatchling to build the package):
 COPY src/ src/
 
-# 6. Install the package itself:
+# 6. Install the package and its dependencies:
 RUN pip install --no-cache-dir .
 
 
@@ -64,8 +59,6 @@ RUN pip install --no-cache-dir .
 # ---------------------------------------------------------------------------
 FROM python:3.12-slim AS runtime
 
-# TODO: Set up the runtime environment.
-#
 # Security best practices:
 # - Run as non-root user
 # - No build tools in the final image
@@ -90,7 +83,7 @@ USER agent
 
 # 6. Set environment variables:
 ENV PYTHONUNBUFFERED=1
-ENV PORT=8000
+ENV PORT=8080
 
 # 7. Health check (for Docker and Cloud Run):
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
@@ -101,5 +94,4 @@ EXPOSE ${PORT}
 
 # 9. Start the application:
 #    Cloud Run sets PORT env var, uvicorn reads it.
-# TODO: Configure the CMD to start the FastAPI app.
-CMD ["uvicorn", "release_agent.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD uvicorn release_agent.main:app --host 0.0.0.0 --port ${PORT}
