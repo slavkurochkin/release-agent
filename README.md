@@ -128,14 +128,6 @@ release-agent/
 |       |-- gold_examples.json # Gold reference examples for evals
 |-- dashboard/
 |   |-- app.py                # Streamlit eval results dashboard
-|-- docs/
-|   |-- phase-1-core-agent/
-|   |-- phase-2-api-layer/
-|   |-- phase-3-context-building/
-|   |-- phase-4-policy-engine/
-|   |-- phase-5-evals/
-|   |-- phase-6-deployment/
-|   |-- phase-7-production/
 |-- Dockerfile                # Multi-stage build for Cloud Run
 |-- pyproject.toml            # Project config, dependencies, tooling
 |-- .env.example              # Environment variable template
@@ -212,7 +204,7 @@ gcloud run deploy release-agent \
     --cpu=1
 ```
 
-For full deployment instructions, infrastructure setup (BigQuery, Cloud Logging, Cloud Trace), and CI/CD configuration, see `docs/phase-6-deployment/`.
+For full deployment instructions, infrastructure setup (BigQuery, Cloud Logging, Cloud Trace), and CI/CD configuration.
 
 ---
 
