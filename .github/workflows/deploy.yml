@@ -4,16 +4,17 @@
 #
 # This workflow:
 # 1. Runs tests and linting on every push and PR
-# 2. Builds a Docker image on merge to main
-# 3. Deploys to Cloud Run on merge to main
+# 2. Builds a Docker image on merge to main or staging
+# 3. Deploys to Cloud Run:
+#    - main    -> release-agent (production, min-instances=1)
+#    - staging -> release-agent-staging (staging, min-instances=0)
 #
 # Prerequisites:
-# - GCP project with Cloud Run enabled
-# - Workload Identity Federation configured for GitHub Actions
+# - GCP project with Cloud Run and Artifact Registry enabled
+# - Service account key stored as GCP_SA_KEY GitHub secret
 # - These GitHub secrets configured:
 #   - GCP_PROJECT_ID: Your GCP project ID
-#   - GCP_REGION: Cloud Run region (e.g., us-central1)
-#   - GCP_SA_KEY: Service account key JSON (or use Workload Identity)
+#   - GCP_SA_KEY: Service account key JSON
 #   - OPENAI_API_KEY: For running tests that call OpenAI
 # =============================================================================
 
@@ -21,16 +22,15 @@ name: CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, staging]
   pull_request:
     branches: [main]
 
 env:
-  # TODO: Set these to match your GCP project
   GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-  GCP_REGION: ${{ secrets.GCP_REGION || 'us-central1' }}
-  SERVICE_NAME: release-agent
-  IMAGE_NAME: gcr.io/${{ secrets.GCP_PROJECT_ID }}/release-agent
+  GCP_REGION: us-central1
+  REPO_NAME: release-agent
+  IMAGE_NAME: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/release-agent/release-agent
 
 jobs:
   # -----------------------------------------------------------------------
@@ -47,14 +47,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      # TODO: Set up caching for pip dependencies.
-      # - name: Cache pip
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: ~/.cache/pip
-      #     key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
-      #     restore-keys: |
-      #       ${{ runner.os }}-pip-
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
 
       - name: Install dependencies
         run: |
@@ -66,7 +65,7 @@ jobs:
 
       - name: Type check with mypy
         run: mypy src/release_agent/ --ignore-missing-imports
-        continue-on-error: true  # TODO: Remove once all type errors are fixed
+        continue-on-error: true
 
       - name: Run tests
         run: pytest tests/ -v --tb=short -m "not integration"
@@ -74,68 +73,71 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
 
   # -----------------------------------------------------------------------
-  # Job 2: Build & Deploy (only on main)
+  # Job 2: Build & Deploy (main -> production, staging -> staging)
   # -----------------------------------------------------------------------
   deploy:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.event_name == 'push'
 
-    # TODO: Configure these permissions for Workload Identity Federation.
-    # permissions:
-    #   contents: read
-    #   id-token: write
+    permissions:
+      contents: read
+      id-token: write
 
     steps:
       - uses: actions/checkout@v4
 
-      # TODO: Set up GCP authentication.
-      #
-      # Option A: Service Account Key (simpler, less secure)
-      # - name: Authenticate to GCP
-      #   uses: google-github-actions/auth@v2
-      #   with:
-      #     credentials_json: ${{ secrets.GCP_SA_KEY }}
-      #
-      # Option B: Workload Identity Federation (recommended)
-      # - name: Authenticate to GCP
-      #   uses: google-github-actions/auth@v2
-      #   with:
-      #     workload_identity_provider: ${{ secrets.WIF_PROVIDER }}
-      #     service_account: ${{ secrets.WIF_SA_EMAIL }}
+      - name: Set environment
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            echo "SERVICE_NAME=release-agent" >> $GITHUB_ENV
+            echo "MIN_INSTANCES=1" >> $GITHUB_ENV
+            echo "ENVIRONMENT=production" >> $GITHUB_ENV
+            echo "LOG_LEVEL=INFO" >> $GITHUB_ENV
+          else
+            echo "SERVICE_NAME=release-agent-staging" >> $GITHUB_ENV
+            echo "MIN_INSTANCES=0" >> $GITHUB_ENV
+            echo "ENVIRONMENT=staging" >> $GITHUB_ENV
+            echo "LOG_LEVEL=DEBUG" >> $GITHUB_ENV
+          fi
 
-      # TODO: Set up Docker for pushing to GCR.
-      # - name: Configure Docker
-      #   run: gcloud auth configure-docker
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      # TODO: Build and push Docker image.
-      # - name: Build Docker image
-      #   run: docker build -t $IMAGE_NAME:${{ github.sha }} -t $IMAGE_NAME:latest .
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
 
-      # - name: Push Docker image
-      #   run: |
-      #     docker push $IMAGE_NAME:${{ github.sha }}
-      #     docker push $IMAGE_NAME:latest
+      - name: Build Docker image
+        run: docker build --platform linux/amd64 -t $IMAGE_NAME:${{ github.sha }} -t $IMAGE_NAME:latest .
 
-      # TODO: Deploy to Cloud Run.
-      # - name: Deploy to Cloud Run
-      #   uses: google-github-actions/deploy-cloudrun@v2
-      #   with:
-      #     service: ${{ env.SERVICE_NAME }}
-      #     region: ${{ env.GCP_REGION }}
-      #     image: ${{ env.IMAGE_NAME }}:${{ github.sha }}
-      #     env_vars: |
-      #       ENVIRONMENT=production
-      #       LOG_LEVEL=INFO
-      #     secrets: |
-      #       OPENAI_API_KEY=openai-api-key:latest
-      #     flags: |
-      #       --memory=512Mi
-      #       --cpu=1
-      #       --min-instances=0
-      #       --max-instances=10
-      #       --concurrency=80
-      #       --timeout=60s
+      - name: Push Docker image
+        run: |
+          docker push $IMAGE_NAME:${{ github.sha }}
+          docker push $IMAGE_NAME:latest
 
-      - name: Placeholder
-        run: echo "TODO - Configure GCP deployment steps above"
+      - name: Deploy to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: ${{ env.SERVICE_NAME }}
+          region: ${{ env.GCP_REGION }}
+          image: ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          env_vars: |
+            ENVIRONMENT=${{ env.ENVIRONMENT }}
+            LOG_LEVEL=${{ env.LOG_LEVEL }}
+          secrets: |
+            OPENAI_API_KEY=openai-api-key:latest
+            GITHUB_TOKEN=github-token:latest
+          flags: |
+            --memory=512Mi
+            --cpu=1
+            --min-instances=${{ env.MIN_INSTANCES }}
+            --max-instances=5
+            --concurrency=10
+            --timeout=120
+
+      - name: Show service URL
+        run: |
+          echo "Deployed ${{ env.SERVICE_NAME }} (${{ env.ENVIRONMENT }})"
+          gcloud run services describe ${{ env.SERVICE_NAME }} --region=$GCP_REGION --format="value(status.url)"

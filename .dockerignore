@@ -27,6 +27,7 @@ tests/
 # Documentation
 docs/
 *.md
+!README.md
 
 # OS
 .DS_Store

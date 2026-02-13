@@ -89,8 +89,10 @@ Then open http://localhost:8000/docs for the interactive Swagger UI.
 
 ```bash
 docker build -t release-agent .
-docker run -p 8000:8000 -e OPENAI_API_KEY=sk-... release-agent
+docker run -p 8080:8080 -e OPENAI_API_KEY=sk-... release-agent
 ```
+
+> **Note**: On Apple Silicon Macs, use `docker build --platform linux/amd64` when building for Cloud Run.
 
 ---
 
@@ -187,15 +189,27 @@ python -m release_agent.evals.runner \
 The agent is designed to run on GCP Cloud Run as a stateless container.
 
 ```bash
-# Build and push the container image
-gcloud builds submit --tag gcr.io/PROJECT_ID/release-agent
+# Set your project and region
+export PROJECT_ID=$(gcloud config get-value project)
+export REGION=us-central1
+export IMAGE=$REGION-docker.pkg.dev/$PROJECT_ID/release-agent/release-agent
 
-# Deploy to Cloud Run
+# Build and push the container image (--platform needed on Apple Silicon Macs)
+docker build --platform linux/amd64 -t release-agent .
+docker tag release-agent:latest $IMAGE:v1
+docker push $IMAGE:v1
+
+# Deploy to Cloud Run (uses Secret Manager for sensitive values)
 gcloud run deploy release-agent \
-    --image gcr.io/PROJECT_ID/release-agent \
-    --platform managed \
-    --region us-central1 \
-    --set-env-vars OPENAI_API_KEY=sk-...,ENVIRONMENT=production
+    --image=$IMAGE:v1 \
+    --region=$REGION \
+    --platform=managed \
+    --allow-unauthenticated \
+    --set-secrets=OPENAI_API_KEY=openai-api-key:latest,GITHUB_TOKEN=github-token:latest \
+    --min-instances=0 \
+    --max-instances=5 \
+    --memory=512Mi \
+    --cpu=1
 ```
 
 For full deployment instructions, infrastructure setup (BigQuery, Cloud Logging, Cloud Trace), and CI/CD configuration, see `docs/phase-6-deployment/`.
