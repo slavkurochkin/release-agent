@@ -291,7 +291,11 @@ class EvalRunner:
             false_nogo_rate=false_nogo_rate,
             avg_explanation_quality=avg_explanation_quality,
             results=all_results,
-            metadata={"examples_path": str(examples_path), "k": k},
+            metadata={
+                "examples_path": str(examples_path),
+                "k": k,
+                "model": self.agent.llm.config.model,
+            },
         )
 
     def save_report(self, report: EvalReport, path: str | Path) -> None:
@@ -366,6 +370,11 @@ def main() -> None:
     runner = EvalRunner()
     report = asyncio.run(runner.run_all(examples_path=args.examples, k=args.k))
     runner.save_report(report, args.output)
+
+    # Also store via LocalEvalStorage so the dashboard can load eval_*.json files
+    from release_agent.evals.storage import LocalEvalStorage
+    storage = LocalEvalStorage(output_dir=Path(args.output).parent)
+    asyncio.run(storage.store_report(report))
 
     print(f"Eval Report — {report.timestamp}")
     print(f"  Examples:  {report.total_examples}")

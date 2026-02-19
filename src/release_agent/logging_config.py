@@ -22,6 +22,9 @@ Usage:
 
 from __future__ import annotations
 
+import logging
+import os
+import sys
 from typing import Any
 
 import structlog
@@ -42,51 +45,48 @@ def setup_logging(
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR).
                    Reads from LOG_LEVEL env var if not provided.
     """
-    # TODO: Implement logging setup.
-    #
-    # Steps:
+
     # 1. Resolve environment and log level:
-    #    env = environment or os.environ.get("ENVIRONMENT", "development")
-    #    level = log_level or os.environ.get("LOG_LEVEL", "INFO")
-    #
+    env = environment or os.environ.get("ENVIRONMENT", "development")
+    level = log_level or os.environ.get("LOG_LEVEL", "INFO")
+
     # 2. Configure structlog processors:
-    #    shared_processors = [
-    #        structlog.contextvars.merge_contextvars,
-    #        structlog.processors.add_log_level,
-    #        structlog.processors.TimeStamper(fmt="iso"),
-    #        structlog.processors.StackInfoRenderer(),
-    #    ]
-    #
+    shared_processors = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+    ]
+
     # 3. Set up environment-specific rendering:
-    #    if env == "production":
-    #        # JSON output for Cloud Logging
-    #        renderer = structlog.processors.JSONRenderer()
-    #    else:
-    #        # Pretty output for development
-    #        renderer = structlog.dev.ConsoleRenderer()
-    #
+    if env == "production":
+        # JSON output for Cloud Logging
+        renderer = structlog.processors.JSONRenderer()
+    else:
+        # Pretty output for development
+        renderer = structlog.dev.ConsoleRenderer()
+
     # 4. Configure structlog:
-    #    structlog.configure(
-    #        processors=[
-    #            *shared_processors,
-    #            structlog.processors.format_exc_info,
-    #            renderer,
-    #        ],
-    #        wrapper_class=structlog.make_filtering_bound_logger(
-    #            getattr(logging, level.upper())
-    #        ),
-    #        context_class=dict,
-    #        logger_factory=structlog.PrintLoggerFactory(),
-    #        cache_logger_on_first_use=True,
-    #    )
+    structlog.configure(
+        processors=[
+            *shared_processors,
+            structlog.processors.format_exc_info,
+            renderer,
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(
+            getattr(logging, level.upper())
+        ),
+        context_class=dict,
+        logger_factory=structlog.PrintLoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
     #
     # 5. Also configure standard library logging (for third-party libs):
-    #    logging.basicConfig(
-    #        format="%(message)s",
-    #        stream=sys.stdout,
-    #        level=getattr(logging, level.upper()),
-    #    )
-    pass  # TODO: Implement
+    logging.basicConfig(
+        format="%(message)s",
+        stream=sys.stdout,
+        level=getattr(logging, level.upper()),
+    )
 
 
 def get_logger(name: str) -> Any:
@@ -98,6 +98,4 @@ def get_logger(name: str) -> Any:
     Returns:
         A structlog bound logger
     """
-    # TODO: Return a structlog logger:
-    # return structlog.get_logger(name)
     return structlog.get_logger(name)

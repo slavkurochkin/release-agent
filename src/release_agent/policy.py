@@ -226,7 +226,7 @@ def rule_auth_changes(
     default_patterns = ["auth", "login", "session", "token", "oauth",
                         "permission", "rbac", "acl"]
     patterns = config.patterns if config and config.patterns is not None else default_patterns
-    risk_adj = config.risk_adjustment if config and config.risk_adjustment is not None else 0.1
+    risk_adj = config.risk_adjustment if config and config.risk_adjustment is not None else 0.05
 
     auth_files = [
         f for f in input_data.files_changed
@@ -302,6 +302,40 @@ def rule_large_pr(
         )
     return None
 
+def rule_infra_changes(
+    output: ReleaseOutput, input_data: ReleaseInput, config: RuleConfig | None = None
+) -> PolicyViolation | None:
+    """RULE: Infrastructure-as-code changes bump risk significantly.
+
+    Rationale: Terraform, Kubernetes, and similar IaC changes affect the
+    underlying platform rather than application code. Mistakes are hard to
+    roll back and can take down entire services. A cluster upgrade that
+    destroys node pools is qualitatively different from a code change.
+    """
+    default_patterns = ["terraform", ".tf", "k8s", "kubernetes", "helm", "ansible",
+                        "cloudformation", ".yaml", "kustomize"]
+    infra_paths = ["terraform/", "k8s/", "infra/", "infrastructure/", "helm/",
+                   "ansible/", "cloudformation/"]
+    patterns = config.patterns if config and config.patterns is not None else default_patterns
+    risk_adj = config.risk_adjustment if config and config.risk_adjustment is not None else 0.2
+
+    infra_files = [
+        f for f in input_data.files_changed
+        if any(f.path.startswith(p) for p in infra_paths)
+        or any(f.path.endswith(p) for p in [".tf", ".tfvars"])
+    ]
+
+    if infra_files:
+        paths = ", ".join(f.path for f in infra_files)
+        return PolicyViolation(
+            rule_name="infra_changes",
+            action=PolicyAction.ADJUST_RISK,
+            reason=f"Infrastructure/IaC files changed: {paths}",
+            risk_adjustment=risk_adj,
+        )
+    return None
+
+
 def rule_no_tests(
     output: ReleaseOutput, input_data: ReleaseInput, config: RuleConfig | None = None
 ) -> PolicyViolation | None:
@@ -339,6 +373,7 @@ DEFAULT_RULES: list[PolicyRule] = [
     rule_high_risk_threshold,
     rule_database_migration,
     rule_auth_changes,
+    rule_infra_changes,
     rule_deploy_during_incident,
     rule_large_pr,
 ]
@@ -427,6 +462,20 @@ def apply_policies(
         data["risk_level"] = RiskLevel.HIGH
     else:
         data["risk_level"] = RiskLevel.CRITICAL
+
+    # Flip decision to NO_GO if policy adjustments pushed risk above threshold
+    high_risk_threshold = 0.8
+    hr_cfg = policy_config.rules.get("high_risk_threshold")
+    if hr_cfg and hr_cfg.threshold is not None:
+        high_risk_threshold = hr_cfg.threshold
+    if data["risk_score"] >= high_risk_threshold and data["decision"] == Decision.GO:
+        data["decision"] = Decision.NO_GO
+        if not data["recommended_actions"]:
+            data["recommended_actions"] = []
+        data["recommended_actions"].append(
+            "[POLICY] Decision flipped to NO_GO: "
+            "risk score exceeded threshold after policy adjustments"
+        )
 
     # Ensure NO_GO decisions have at least HIGH risk_level
     if data["decision"] == Decision.NO_GO and data["risk_level"] not in (

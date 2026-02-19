@@ -21,16 +21,19 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 from collections import defaultdict
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
+import structlog
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from release_agent.agent import ReleaseRiskAgent
+from release_agent.logging_config import setup_logging
 from release_agent.prompts.assess_risk import build_system_prompt, build_user_prompt
 from release_agent.schemas import ReleaseInput, ReleaseOutput
 
@@ -50,19 +53,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     #
     # Steps:
     # 1. Create the agent instance:
-    #    app.state.agent = ReleaseRiskAgent()
+    app.state.agent = ReleaseRiskAgent()
     #
     # 2. yield to let the app run
-    #
+    setup_logging()
+    yield
     # 3. Clean up resources on shutdown (if any)
     #
     # Hint: The agent is stateless, so cleanup is minimal.
     # In Phase 7, you'll add logging setup and DB connections here.
-    # Startup: create the agent once
-    app.state.agent = ReleaseRiskAgent()
-    yield
-    # Shutdown: nothing to clean up for now
-
 
 # ---------------------------------------------------------------------------
 # FastAPI App
@@ -96,6 +95,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+class RequestIDMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        request_id = str(uuid.uuid4())
+        structlog.contextvars.clear_contextvars()
+        structlog.contextvars.bind_contextvars(request_id=request_id)
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = request_id
+        return response
+
+app.add_middleware(RequestIDMiddleware)
+
 
 class LoggingMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
