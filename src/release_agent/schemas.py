@@ -185,29 +185,22 @@ class ReleaseOutput(BaseModel):
     # Hint: Use @model_validator(mode='after') for cross-field validation.
     @model_validator(mode='after')
     def cehc_decision_consistency(self) -> ReleaseOutput:
-        """Ensure the decision is consistent with the risk assessment."""
-        # Rule 1: NO_GO decisions should have HIGH or CRITICAL risk level
+        """Ensure the decision is consistent with the risk assessment.
+
+        Rather than raising on inconsistent LLM output, we auto-correct so
+        the policy engine can apply its own adjustments downstream.
+        """
+        # Rule 1: NO_GO decisions should have at least HIGH risk level and
+        # a risk_score in the HIGH range (>=0.5) for consistency
         if self.decision == Decision.NO_GO and self.risk_level not in (
             RiskLevel.HIGH, RiskLevel.CRITICAL
         ):
-            raise ValueError(
-                f"Decision is NO_GO but risk_level is {self.risk_level}. "
-                "NO_GO decisions should have HIGH or CRITICAL risk."
-            )
+            self.risk_level = RiskLevel.HIGH
+            self.risk_score = max(self.risk_score, 0.5)
 
-        # Rule 2: If risk scores should result in NO_GO
+        # Rule 2: GO with risk_score > 0.7 is contradictory — flip to NO_GO
         if self.risk_score > 0.7 and self.decision == Decision.GO:
-            raise ValueError(
-                f"Risk score is {self.risk_score} (> 0.7) but decision is GO."
-                f"High-risk releases should be NO_GO."
-            )
-
-        # Rule 3: GO with conditions requires non-empty conditions list
-        # (This one is a soft check -- uncomment if you want strict enforcement)
-        # if self.decision == Decision.GO and self.risk_score > 0.3 and not self.conditions:
-        #     raise ValueError(
-        #         "GO decision with risk_score > 0.3 should include conditions."
-        #     )
+            self.decision = Decision.NO_GO
 
         return self
 

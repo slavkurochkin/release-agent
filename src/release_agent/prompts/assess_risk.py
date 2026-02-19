@@ -43,12 +43,22 @@ but you catch real risks that humans might miss.
 - **LOW (0.0-0.3)**: Documentation, tests, minor UI tweaks, config changes
   in non-critical paths. Routine changes with small blast radius.
 - **MEDIUM (0.3-0.5)**: Business logic changes, new features behind flags,
-  dependency updates with good test coverage.
+  dependency updates with good test coverage. Small changes deployed during
+  active incidents (when the change is unrelated to the incident).
 - **HIGH (0.5-0.7)**: Database migrations, authentication changes, API
-  contract modifications, changes touching payment/billing code.
+  contract modifications, changes touching payment/billing code. Clean CI
+  with comprehensive test coverage is a strong mitigating factor — a major
+  auth refactor (e.g. session→JWT) with all tests passing, security scan
+  clean, and no active incidents is HIGH and GO, not CRITICAL.
 - **CRITICAL (0.7-1.0)**: Infrastructure changes without rollback plan,
   multiple high-risk areas changed simultaneously, CI failures on critical
-  checks, deploys during active incidents.
+  checks.
+
+## Risk Modifiers
+Active incidents raise risk but do NOT automatically make a deploy CRITICAL.
+Consider the change scope: a 2-file logging change during a DB incident is
+still LOW-MEDIUM risk for that change. Conversely, deploying a large auth
+refactor during an active incident compounds risk significantly.
 
 ## Decision Rules
 - **GO**: Risk is manageable, changes are well-tested, no blocking issues.

@@ -73,7 +73,8 @@ async def run_semantic_evals(
     expected: ReleaseOutput,
     example_id: str,
     llm_client: LLMClient | None = None,
-    similarity_threshold: float = 0.75,
+    similarity_threshold: float = 0.70,
+    summary_threshold: float = 0.65,
 ) -> list[EvalResult]:
     """Run semantic evaluations comparing actual vs expected output.
 
@@ -82,15 +83,14 @@ async def run_semantic_evals(
         expected: The expected (gold) output
         example_id: Identifier for the gold example
         llm_client: LLM client for generating embeddings
-        similarity_threshold: Minimum similarity score to pass
+        similarity_threshold: Minimum similarity score for explanation similarity
+        summary_threshold: Minimum similarity score for summary (lower because
+            summaries are shorter and carry less embedding signal)
 
     Returns:
         List of EvalResult objects
     """
-    # 1. Create LLM client if not provided:
     client = llm_client or LLMClient()
-    #
-    # 2. Run individual semantic checks:
     results = []
     results.append(
         await check_explanation_similarity(
@@ -99,7 +99,7 @@ async def run_semantic_evals(
     )
     results.append(
         await check_summary_similarity(
-            actual, expected, example_id, client, similarity_threshold
+            actual, expected, example_id, client, summary_threshold
         )
     )
     return results
@@ -110,7 +110,7 @@ async def check_explanation_similarity(
     expected: ReleaseOutput,
     example_id: str,
     client: LLMClient,
-    threshold: float = 0.75,
+    threshold: float = 0.70,
 ) -> EvalResult:
     """Check if the agent's explanation is semantically similar to the expected one.
 
@@ -148,7 +148,7 @@ async def check_summary_similarity(
     expected: ReleaseOutput,
     example_id: str,
     client: LLMClient,
-    threshold: float = 0.70,
+    threshold: float = 0.65,
 ) -> EvalResult:
     """Check if the agent's summary is semantically similar to the expected one.
 

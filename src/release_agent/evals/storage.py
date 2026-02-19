@@ -28,10 +28,64 @@ Usage:
 
 from __future__ import annotations
 
+import json
+import os
+import uuid
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import httpx
+
 from release_agent.evals.runner import EvalReport
+
+
+# ---------------------------------------------------------------------------
+# Slack Alerting
+# ---------------------------------------------------------------------------
+
+
+async def notify_slack(webhook_url: str, message: str) -> None:
+    """Send a message to a Slack channel via an incoming webhook.
+
+    Args:
+        webhook_url: Slack incoming webhook URL (from SLACK_WEBHOOK_URL env var)
+        message: Plain text message to post
+    """
+    async with httpx.AsyncClient() as client:
+        await client.post(webhook_url, json={"text": message})
+
+
+async def _alert_if_needed(report: EvalReport, run_id: str) -> None:
+    """Send Slack alerts if key metrics breach thresholds.
+
+    Alerts on:
+    - false_go_rate > 5%  (safety critical — agent approved risky releases)
+    - pass_rate < 80%     (quality regression)
+
+    Reads SLACK_WEBHOOK_URL from the environment. Silently skips if not set.
+    """
+    webhook_url = os.environ.get("SLACK_WEBHOOK_URL")
+    if not webhook_url:
+        return
+
+    model = report.metadata.get("model", "unknown")
+
+    if report.false_go_rate > 0.05:
+        await notify_slack(
+            webhook_url,
+            f":rotating_light: *Release Agent — False GO Alert*\n"
+            f"False GO rate: *{report.false_go_rate:.1%}* (threshold: 5%)\n"
+            f"Run ID: `{run_id}` | Model: `{model}` | Checks: {len(report.results)}",
+        )
+
+    if report.pass_rate < 0.80:
+        await notify_slack(
+            webhook_url,
+            f":warning: *Release Agent — Quality Regression*\n"
+            f"Pass rate dropped to *{report.pass_rate:.1%}* (threshold: 80%)\n"
+            f"Run ID: `{run_id}` | Model: `{model}` | Checks: {len(report.results)}",
+        )
 
 # ---------------------------------------------------------------------------
 # Local File Storage (development fallback)
@@ -63,44 +117,38 @@ class LocalEvalStorage:
         Returns:
             Path to the saved file
         """
-        # TODO: Implement local storage.
-        #
-        # Steps:
-        # 1. Create the output directory:
-        #    self._output_dir.mkdir(parents=True, exist_ok=True)
-        #
-        # 2. Generate a filename:
-        #    run_id = uuid.uuid4().hex[:8]
-        #    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-        #    filename = f"eval_{timestamp}_{run_id}.json"
-        #
-        # 3. Convert report to dict and save:
-        #    filepath = self._output_dir / filename
-        #    data = {
-        #        "run_id": run_id,
-        #        "timestamp": report.timestamp,
-        #        "total_examples": report.total_examples,
-        #        "pass_rate": report.pass_rate,
-        #        "false_go_rate": report.false_go_rate,
-        #        "results": [
-        #            {
-        #                "eval_type": r.eval_type,
-        #                "eval_name": r.eval_name,
-        #                "passed": r.passed,
-        #                "score": r.score,
-        #                "details": r.details,
-        #                "example_id": r.example_id,
-        #            }
-        #            for r in report.results
-        #        ],
-        #        "metadata": report.metadata,
-        #    }
-        #    with open(filepath, "w") as f:
-        #        json.dump(data, f, indent=2)
-        #
-        # 4. Return the filepath:
-        #    return str(filepath)
-        raise NotImplementedError("TODO: Implement local eval storage")
+        self._output_dir.mkdir(parents=True, exist_ok=True)
+
+        run_id = uuid.uuid4().hex[:8]
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        filename = f"eval_{timestamp}_{run_id}.json"
+
+        data = {
+            "run_id": run_id,
+            "timestamp": report.timestamp,
+            "total_examples": report.total_examples,
+            "pass_rate": report.pass_rate,
+            "false_go_rate": report.false_go_rate,
+            "results": [
+                {
+                    "eval_type": r.eval_type,
+                    "eval_name": r.eval_name,
+                    "passed": r.passed,
+                    "score": r.score,
+                    "details": r.details,
+                    "example_id": r.example_id,
+                }
+                for r in report.results
+            ],
+            "metadata": report.metadata,
+        }
+
+        filepath = self._output_dir / filename
+        with open(filepath, "w") as f:
+            json.dump(data, f, indent=2)
+
+        await _alert_if_needed(report, run_id)
+        return str(filepath)
 
 
 # ---------------------------------------------------------------------------
@@ -132,18 +180,13 @@ class BigQueryEvalStorage:
             dataset: BigQuery dataset name
             table: BigQuery table name
         """
-        # TODO: Initialize BigQuery client.
-        #
-        # Steps:
-        # 1. Resolve project_id from env var if not provided
-        # 2. Store dataset and table names
-        # 3. Initialize the BigQuery client:
-        #    from google.cloud import bigquery
-        #    self._client = bigquery.Client(project=project_id)
-        #    self._table_ref = f"{project_id}.{dataset}.{table}"
-        self._project_id = project_id
-        self._dataset = dataset
-        self._table = table
+        from google.cloud import bigquery
+
+        project_id = project_id or os.environ.get("GCP_PROJECT_ID")
+        if not project_id:
+            raise ValueError("project_id required: pass it or set GCP_PROJECT_ID env var")
+        self._client = bigquery.Client(project=project_id)
+        self._table_ref = f"{project_id}.{dataset}.{table}"
 
     async def store_report(self, report: EvalReport) -> str:
         """Store eval results as rows in BigQuery.
@@ -157,36 +200,30 @@ class BigQueryEvalStorage:
         Returns:
             The run_id for this eval run
         """
-        # TODO: Implement BigQuery storage.
-        #
-        # Steps:
-        # 1. Generate a run_id:
-        #    run_id = uuid.uuid4().hex
-        #
-        # 2. Convert results to BigQuery rows:
-        #    rows = [
-        #        {
-        #            "run_id": run_id,
-        #            "timestamp": report.timestamp,
-        #            "model_version": report.metadata.get("model", "unknown"),
-        #            "eval_type": r.eval_type,
-        #            "eval_name": r.eval_name,
-        #            "example_id": r.example_id,
-        #            "passed": r.passed,
-        #            "score": r.score,
-        #            "details": r.details,
-        #            "metadata": json.dumps(report.metadata),
-        #        }
-        #        for r in report.results
-        #    ]
-        #
-        # 3. Insert rows:
-        #    errors = self._client.insert_rows_json(self._table_ref, rows)
-        #    if errors:
-        #        raise RuntimeError(f"BigQuery insert errors: {errors}")
-        #
-        # 4. Return run_id
-        raise NotImplementedError("TODO: Implement BigQuery eval storage")
+        run_id = uuid.uuid4().hex
+
+        rows = [
+            {
+                "run_id": run_id,
+                "timestamp": report.timestamp,
+                "model_version": report.metadata.get("model", "unknown"),
+                "eval_type": r.eval_type,
+                "eval_name": r.eval_name,
+                "example_id": r.example_id,
+                "passed": r.passed,
+                "score": r.score,
+                "details": r.details,
+                "metadata": json.dumps(report.metadata),
+            }
+            for r in report.results
+        ]
+
+        errors = self._client.insert_rows_json(self._table_ref, rows)
+        if errors:
+            raise RuntimeError(f"BigQuery insert errors: {errors}")
+
+        await _alert_if_needed(report, run_id)
+        return run_id
 
     async def get_pass_rate_trend(
         self,
@@ -202,15 +239,24 @@ class BigQueryEvalStorage:
         Returns:
             List of dicts with date, pass_rate, total_checks
         """
-        # TODO: Implement trend query.
-        #
-        # SQL:
-        #   SELECT
-        #     DATE(timestamp) as date,
-        #     COUNTIF(passed) / COUNT(*) as pass_rate,
-        #     COUNT(*) as total_checks
-        #   FROM `{table_ref}`
-        #   WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
-        #   GROUP BY date
-        #   ORDER BY date
-        raise NotImplementedError("TODO: Implement pass rate trend query")
+        query = f"""
+SELECT
+    DATE(timestamp) AS date,
+    COUNTIF(passed) / COUNT(*) AS pass_rate,
+    COUNT(*) AS total_checks
+FROM `{self._table_ref}`
+WHERE timestamp > TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL {days} DAY)
+"""
+        if eval_type:
+            query += f"  AND eval_type = '{eval_type}'\n"
+        query += "GROUP BY date\nORDER BY date"
+
+        result = self._client.query(query).result()
+        return [
+            {
+                "date": str(row.date),
+                "pass_rate": row.pass_rate,
+                "total_checks": row.total_checks,
+            }
+            for row in result
+        ]

@@ -169,16 +169,11 @@ class LLMClient:
         Returns:
             A list of floats representing the embedding vector
         """
-        # TODO: Implement embedding generation.
-        #
-        # Steps:
-        # 1. Call self._client.embeddings.create() with:
-        #    - model="text-embedding-3-small"
-        #    - input=text
-        #
-        # 2. Extract the embedding:
-        #    return response.data[0].embedding
-        raise NotImplementedError("TODO: Implement embedding generation")
+        response = await self._client.embeddings.create(
+            model="text-embedding-3-small",
+            input=text,
+        )
+        return response.data[0].embedding
 
     def _get_schema_for_response_format(self) -> dict[str, Any]:
         """Generate the JSON schema to send to OpenAI for structured output.

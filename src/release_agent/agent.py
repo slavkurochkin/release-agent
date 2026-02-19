@@ -25,8 +25,12 @@ import json
 import sys
 
 from release_agent.llm import LLMClient, LLMConfig
+from release_agent.logging_config import get_logger
+from release_agent.policy import apply_policies
 from release_agent.prompts.assess_risk import build_system_prompt, build_user_prompt
 from release_agent.schemas import ReleaseInput, ReleaseOutput
+
+logger = get_logger(__name__)
 
 
 class ReleaseRiskAgent:
@@ -78,29 +82,39 @@ class ReleaseRiskAgent:
         Raises:
             ValueError: If the LLM returns invalid output after retries
         """
-        # TODO: Implement the assessment pipeline.
-        #
-        # Steps:
-        # 1. Build the system prompt:
-        #    system_prompt = build_system_prompt()
-        #
-        # 2. Build the user prompt from the release data:
-        #    user_prompt = build_user_prompt(release)
-        #
-        # 3. Call the LLM:
-        #    result = await self.llm.assess_risk(system_prompt, user_prompt)
-        #
-        # 4. (Phase 4) Apply policy rules:
-        #    result = apply_policies(result, release)
-        #
-        # 5. Return the result:
-        #    return result
-        #
-        # Hint: For now, skip step 4. You'll add it in Phase 4.
-        system_prompt = build_system_prompt()
-        user_prompt = build_user_prompt(release)
-        result = await self.llm.assess_risk(system_prompt, user_prompt)
-        return result
+        logger.info(
+            "assessment_started",
+            repo=release.repo,
+            pr_number=release.pr_number,
+            author=release.author,
+            files_count=len(release.files_changed),
+        )
+        try:
+            system_prompt = build_system_prompt()
+            user_prompt = build_user_prompt(release)
+            result = await self.llm.assess_risk(system_prompt, user_prompt)
+
+            logger.info(
+                "assessment_complete",
+                repo=release.repo,
+                pr_number=release.pr_number,
+                decision=result.decision.value,
+                risk_score=result.risk_score,
+                risk_level=result.risk_level.value,
+                risk_factors_count=len(result.risk_factors),
+            )
+
+            result = apply_policies(result, release)
+            return result
+        except Exception as e:
+            logger.error(
+                "assessment_failed",
+                repo=release.repo,
+                pr_number=release.pr_number,
+                error=str(e),
+                exc_info=True,
+            )
+            raise
 
 
 # ---------------------------------------------------------------------------
@@ -121,30 +135,6 @@ def main() -> None:
     #
     # Steps:
     # 1. Set up argument parsing:
-    #    parser = argparse.ArgumentParser(description="Release Risk Agent")
-    #    parser.add_argument(
-    #        "--input", "-i",
-    #        type=str,
-    #        help="Path to JSON file with release data (or use stdin)"
-    #    )
-    #    args = parser.parse_args()
-    #
-    # 2. Read input data:
-    #    if args.input:
-    #        with open(args.input) as f:
-    #            data = json.load(f)
-    #    else:
-    #        data = json.load(sys.stdin)
-    #
-    # 3. Parse into ReleaseInput:
-    #    release = ReleaseInput.model_validate(data)
-    #
-    # 4. Create agent and run assessment:
-    #    agent = ReleaseRiskAgent()
-    #    result = asyncio.run(agent.assess(release))
-    #
-    # 5. Print the result as formatted JSON:
-    #    print(result.model_dump_json(indent=2))
     parser = argparse.ArgumentParser(description="Release Risk Assessment Agent")
     parser.add_argument(
         "--input", "-i",
@@ -152,7 +142,7 @@ def main() -> None:
         help="Path to JSON file with release data (reads stdin if omitted)",
     )
     args = parser.parse_args()
-
+    # 2. Read input data:
     if not args.input and sys.stdin.isatty():
       parser.print_usage()
       print("Provide --input FILE or pipe JSON via stdin.")
@@ -164,10 +154,16 @@ def main() -> None:
     else:
         data = json.load(sys.stdin)
 
+    # 3. Parse into ReleaseInput:
     release = ReleaseInput.model_validate(data)
+    #
+    # 4. Create agent and run assessment:
     agent = ReleaseRiskAgent()
     result = asyncio.run(agent.assess(release))
+    #
+    # 5. Print the result as formatted JSON:
     print(result.model_dump_json(indent=2))
+
 
 
 if __name__ == "__main__":
